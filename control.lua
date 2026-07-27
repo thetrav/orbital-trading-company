@@ -1,6 +1,10 @@
 local PLATFORM_SIZE = 10
 local PLATFORM_HALF = PLATFORM_SIZE / 2
 local STARTING_CREDITS = 1000
+local BUY_CHEST_NAME = "otc-buy-chest"
+local COMBINATOR_NAME = "constant-combinator"
+local BUY_CHEST_POSITION = { x = -4, y = 0 }
+local COMBINATOR_POSITION = { x = -4, y = -1 }
 
 local function is_in_platform(x, y)
     return x >= -PLATFORM_HALF and x < PLATFORM_HALF
@@ -87,6 +91,121 @@ local function init_player(player)
     create_credits_gui(player)
 end
 
+local function update_credits_gui(player_index)
+    local player = game.get_player(player_index)
+    if not player then return end
+    local frame = player.gui.screen.otc_credits_frame
+    if not frame then return end
+    local label = frame.otc_credits_label
+    if not label then return end
+    local player_data = storage.players and storage.players[player_index]
+    local credits = player_data and player_data.credits or 0
+    label.caption = format_credits(credits)
+end
+
+local function find_combinator_above(chest)
+    local pos = chest.position
+    local search_area = {
+        { pos.x - 0.5, pos.y - 1.5 },
+        { pos.x + 0.5, pos.y - 0.5 },
+    }
+    local entities = chest.surface.find_entities_filtered {
+        area = search_area,
+        name = COMBINATOR_NAME,
+        force = chest.force,
+    }
+    return entities[1]
+end
+
+local function connect_combinator_to_chest(combinator, chest)
+    if combinator and combinator.valid and chest and chest.valid then
+        local combinator_out = combinator.get_wire_connector(defines.wire_connector_id.circuit_green, true)
+        local chest_in = chest.get_wire_connector(defines.wire_connector_id.circuit_green, true)
+        if combinator_out and chest_in then
+            combinator_out.connect_to(chest_in, false, defines.wire_origin.player)
+        end
+    end
+end
+
+local function register_buy_chest(entity)
+    if not entity or not entity.valid then return end
+    if entity.name ~= BUY_CHEST_NAME then return end
+
+    local combinator = find_combinator_above(entity)
+    if not combinator then return end
+
+    connect_combinator_to_chest(combinator, entity)
+
+    storage.buy_chests = storage.buy_chests or {}
+    storage.buy_chests[entity.unit_number] = {
+        chest = entity,
+        combinator = combinator,
+    }
+end
+
+local function unregister_buy_chest(unit_number)
+    if not storage.buy_chests then return end
+    storage.buy_chests[unit_number] = nil
+end
+
+local function read_circuit_signals(chest)
+    local signals = {}
+    local green_id = chest.get_circuit_network(defines.wire_connector_id.circuit_green)
+    if green_id then
+        for _, sig in pairs(green_id.signals or {}) do
+            if sig.signal and sig.signal.type == "item" then
+                signals[sig.signal.name] = (signals[sig.signal.name] or 0) + sig.count
+            end
+        end
+    end
+    local red_id = chest.get_circuit_network(defines.wire_connector_id.circuit_red)
+    if red_id then
+        for _, sig in pairs(red_id.signals or {}) do
+            if sig.signal and sig.signal.type == "item" then
+                signals[sig.signal.name] = (signals[sig.signal.name] or 0) + sig.count
+            end
+        end
+    end
+    return signals
+end
+
+local function process_buy_chests()
+    if not storage.buy_chests then return end
+
+    for unit_number, data in pairs(storage.buy_chests) do
+        if not data.chest.valid or not data.combinator.valid then
+            storage.buy_chests[unit_number] = nil
+        else
+            local signals = read_circuit_signals(data.chest)
+            if next(signals) then
+                local inventory = data.chest.get_inventory(defines.inventory.chest)
+
+                for item_name, desired in pairs(signals) do
+                    local current = inventory.get_item_count(item_name)
+                    local deficit = desired - current
+
+                    if deficit > 0 then
+                        local player = game.connected_players[1]
+                        if player then
+                            local player_data = storage.players and storage.players[player.index]
+                            if player_data then
+                                local can_afford = math.min(deficit, player_data.credits)
+                                if can_afford > 0 then
+                                    local inserted = inventory.insert({ name = item_name, count = can_afford })
+                                    if inserted > 0 then
+                                        player_data.credits = player_data.credits - inserted
+                                        update_credits_gui(player.index)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
 script.on_init(function()
     if remote.interfaces["freeplay"] then
         remote.call("freeplay", "set_skip_intro", true)
@@ -122,6 +241,32 @@ script.on_init(function()
         player.teleport({0.5, 0.5}, surface)
         init_player(player)
     end
+
+    local combinator = surface.create_entity {
+        name = COMBINATOR_NAME,
+        position = COMBINATOR_POSITION,
+        force = "player",
+    }
+    if combinator then
+        combinator.minable = false
+        combinator.destructible = false
+
+        local behaviour = combinator.get_or_create_control_behavior()
+        local section = behaviour.get_section(1)
+        section.set_slot(1, { value = { type = "item", name = "iron-ore", quality = "normal" }, min = 1 })
+        section.set_slot(2, { value = { type = "item", name = "coal", quality = "normal" }, min = 1 })
+    end
+
+    local chest = surface.create_entity {
+        name = BUY_CHEST_NAME,
+        position = BUY_CHEST_POSITION,
+        force = "player",
+    }
+    if chest then
+        chest.minable = false
+        chest.destructible = false
+        register_buy_chest(chest)
+    end
 end)
 
 script.on_event(defines.events.on_player_created, function(event)
@@ -139,4 +284,24 @@ end)
 script.on_event(defines.events.on_chunk_generated, function(event)
     if event.surface.index ~= 1 then return end
     build_platform(event.surface, event.area)
+end)
+
+script.on_nth_tick(1, function()
+    process_buy_chests()
+end)
+
+script.on_event(defines.events.on_built_entity, function(event)
+    register_buy_chest(event.created_entity)
+end)
+
+script.on_event(defines.events.on_entity_died, function(event)
+    if event.entity.name == BUY_CHEST_NAME then
+        unregister_buy_chest(event.entity.unit_number)
+    end
+end)
+
+script.on_event(defines.events.on_player_mined_entity, function(event)
+    if event.entity.name == BUY_CHEST_NAME then
+        unregister_buy_chest(event.entity.unit_number)
+    end
 end)
