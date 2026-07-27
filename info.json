@@ -1,0 +1,9 @@
+{
+  "name": "orbital-trading-company",
+  "version": "0.1.0",
+  "title": "Orbital Trading Company",
+  "author": "Travis Dixon",
+  "factorio_version": "2.0",
+  "dependencies": ["base >= 2.0"],
+  "description": "Run an orbital trading and manufacturing station, cooperate and/or compete with your friends stations to buy produce and sell on a shared supply and demand market"
+}
