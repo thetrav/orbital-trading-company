@@ -1,5 +1,6 @@
 local PLATFORM_SIZE = 10
 local PLATFORM_HALF = PLATFORM_SIZE / 2
+local STARTING_CREDITS = 1000
 
 local function is_in_platform(x, y)
     return x >= -PLATFORM_HALF and x < PLATFORM_HALF
@@ -17,11 +18,82 @@ local function build_platform(surface, area)
     surface.set_tiles(tiles, true)
 end
 
+local function format_credits(amount)
+    local formatted = tostring(amount)
+    local k
+    while true do
+        formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", "%1,%2")
+        if k == 0 then break end
+    end
+    return formatted
+end
+
+local function create_credits_gui(player)
+    if player.gui.screen.otc_credits_frame then
+        player.gui.screen.otc_credits_frame.destroy()
+    end
+
+    local frame = player.gui.screen.add {
+        type = "frame",
+        name = "otc_credits_frame",
+        direction = "vertical",
+    }
+    frame.style.size = {120, 70}
+    frame.style.padding = 4
+    frame.style.bottom_padding = 8
+
+    local title_flow = frame.add {
+        type = "flow",
+        name = "title_flow",
+        direction = "horizontal",
+    }
+    title_flow.style.vertical_align = "center"
+    title_flow.drag_target = frame
+
+    title_flow.add {
+        type = "label",
+        style = "frame_title",
+        caption = "Credits",
+        ignored_by_interaction = true,
+    }
+
+    local drag = title_flow.add {
+        type = "empty-widget",
+        style = "draggable_space",
+        ignored_by_interaction = true,
+    }
+    drag.style.height = 24
+    drag.style.horizontally_stretchable = true
+
+    local player_data = storage.players and storage.players[player.index]
+    local credits = player_data and player_data.credits or STARTING_CREDITS
+    local label = frame.add {
+        type = "label",
+        name = "otc_credits_label",
+        caption = format_credits(credits),
+    }
+    label.style.font = "default-listbox"
+    label.style.horizontal_align = "center"
+    label.style.horizontally_stretchable = true
+
+    return frame
+end
+
+local function init_player(player)
+    storage.players = storage.players or {}
+    if not storage.players[player.index] then
+        storage.players[player.index] = { credits = STARTING_CREDITS }
+    end
+    create_credits_gui(player)
+end
+
 script.on_init(function()
     if remote.interfaces["freeplay"] then
         remote.call("freeplay", "set_skip_intro", true)
         remote.call("freeplay", "set_disable_crashsite", true)
     end
+
+    storage.players = {}
 
     local surface = game.surfaces[1]
     game.map_settings.pollution.enabled = false
@@ -48,6 +120,19 @@ script.on_init(function()
 
     for _, player in pairs(game.connected_players) do
         player.teleport({0.5, 0.5}, surface)
+        init_player(player)
+    end
+end)
+
+script.on_event(defines.events.on_player_created, function(event)
+    local player = game.get_player(event.player_index)
+    init_player(player)
+end)
+
+script.on_event(defines.events.on_player_joined_game, function(event)
+    local player = game.get_player(event.player_index)
+    if player and not player.gui.screen.otc_credits_frame then
+        init_player(player)
     end
 end)
 
