@@ -3,6 +3,7 @@ local pricing = require("scripts.pricing")
 local market_gui = require("scripts.market_gui")
 local buy_chest = require("scripts.buy_chest")
 local sell_chest = require("scripts.sell_chest")
+local supply_demand = require("scripts.supply_demand")
 
 local BUY_CHEST_NAME = "otc-buy-chest"
 local SELL_CHEST_NAME = "otc-sell-chest"
@@ -18,6 +19,8 @@ script.on_init(function()
     end
 
     storage.players = {}
+
+    supply_demand.init()
 
     local surface = game.surfaces[1]
     game.map_settings.pollution.enabled = false
@@ -111,6 +114,7 @@ end)
 script.on_nth_tick(1, function()
     buy_chest.process()
     sell_chest.process()
+    supply_demand.process_tick()
 end)
 
 script.on_event(defines.events.on_built_entity, function(event)

@@ -1,11 +1,12 @@
 local utils = require("scripts.utils")
 local item_filter = require("scripts.item_filter")
 local market_gui = require("scripts.market_gui")
+local supply_demand = require("scripts.supply_demand")
 
 local M = {}
 
 local SELL_CHEST_NAME = "otc-sell-chest"
-local SELL_MULTIPLIER = 0.90
+local SELL_MULTIPLIER = 0.99
 
 function M.register(entity)
     if not entity or not entity.valid then return end
@@ -40,6 +41,7 @@ function M.process()
                                 if removed > 0 then
                                     local sell_value = math.floor(removed * utils.get_price(item.name) * SELL_MULTIPLIER + 0.5)
                                     player_data.credits = player_data.credits + sell_value
+                                    supply_demand.record_sell(item.name, removed)
                                     market_gui.update_credits_gui(player.index)
                                 end
                             end

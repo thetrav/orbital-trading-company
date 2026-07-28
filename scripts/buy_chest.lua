@@ -1,12 +1,13 @@
 local utils = require("scripts.utils")
 local item_filter = require("scripts.item_filter")
 local market_gui = require("scripts.market_gui")
+local supply_demand = require("scripts.supply_demand")
 
 local M = {}
 
 local BUY_CHEST_NAME = "otc-buy-chest"
 local COMBINATOR_NAME = "constant-combinator"
-local BUY_MULTIPLIER = 1.05
+local BUY_MULTIPLIER = 1.01
 
 local function find_combinator_above(chest)
     local pos = chest.position
@@ -107,6 +108,7 @@ function M.process()
                                         local inserted = inventory.insert({ name = item_name, count = to_buy })
                                         if inserted > 0 then
                                             player_data.credits = player_data.credits - inserted * buy_price
+                                            supply_demand.record_buy(item_name, inserted)
                                             market_gui.update_credits_gui(player.index)
                                         end
                                     end

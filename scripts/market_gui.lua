@@ -4,7 +4,7 @@ local item_filter = require("scripts.item_filter")
 local M = {}
 
 local STARTING_CREDITS = 5000
-local BUY_MULTIPLIER = 1.05
+local BUY_MULTIPLIER = 1.01
 
 function M.create_credits_gui(player)
     if player.gui.screen.otc_credits_frame then
@@ -128,10 +128,27 @@ function M.rebuild_market_list(player)
                 sprite = "item/" .. item.name,
             }
 
+            local effective_price = math.floor(utils.get_price(item.name) * BUY_MULTIPLIER + 0.5)
             row.add {
                 type = "label",
-                caption = "₾" .. utils.format_number(math.floor(utils.get_price(item.name) * BUY_MULTIPLIER + 0.5)),
+                caption = "₾" .. utils.format_number(effective_price),
             }
+
+            local offset = utils.get_price_offset(item.name)
+            local trend_text = ""
+            local trend_color = {r = 0.6, g = 0.6, b = 0.6}
+            if offset > 0.5 then
+                trend_text = "▲"
+                trend_color = {r = 0.2, g = 0.8, b = 0.2}
+            elseif offset < -0.5 then
+                trend_text = "▼"
+                trend_color = {r = 0.8, g = 0.2, b = 0.2}
+            end
+            local trend = row.add {
+                type = "label",
+                caption = trend_text,
+            }
+            trend.style.font_color = trend_color
         end
     end
 end
@@ -147,7 +164,7 @@ function M.create_market_gui(player)
         direction = "vertical",
         style = "frame",
     }
-    frame.style.size = {180, 500}
+    frame.style.size = {200, 500}
     frame.style.padding = 4
 
     local title_flow = frame.add {

@@ -12,11 +12,28 @@ function M.format_number(amount)
     return formatted
 end
 
-function M.get_price(item_name)
+function M.get_base_price(item_name)
     if storage.prices and storage.prices[item_name] then
         return storage.prices[item_name]
     end
     return BASE_ORE_PRICE
+end
+
+function M.get_price(item_name)
+    local base = M.get_base_price(item_name)
+    local supply_demand = package.loaded["scripts.supply_demand"]
+    if supply_demand then
+        return supply_demand.get_effective_price(item_name, base)
+    end
+    return base
+end
+
+function M.get_price_offset(item_name)
+    local supply_demand = package.loaded["scripts.supply_demand"]
+    if supply_demand then
+        return supply_demand.get_offset(item_name)
+    end
+    return 0
 end
 
 return M
