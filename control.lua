@@ -131,6 +131,9 @@ local function register_buy_chest(entity)
     if not entity or not entity.valid then return end
     if entity.name ~= BUY_CHEST_NAME then return end
 
+    local cb = entity.get_or_create_control_behavior()
+    cb.read_contents = false
+
     local combinator = find_combinator_above(entity)
     if not combinator then return end
 
@@ -153,7 +156,7 @@ local function read_circuit_signals(chest)
     local green_id = chest.get_circuit_network(defines.wire_connector_id.circuit_green)
     if green_id then
         for _, sig in pairs(green_id.signals or {}) do
-            if sig.signal and sig.signal.type == "item" then
+            if sig.signal and sig.signal.name then
                 signals[sig.signal.name] = (signals[sig.signal.name] or 0) + sig.count
             end
         end
@@ -161,7 +164,7 @@ local function read_circuit_signals(chest)
     local red_id = chest.get_circuit_network(defines.wire_connector_id.circuit_red)
     if red_id then
         for _, sig in pairs(red_id.signals or {}) do
-            if sig.signal and sig.signal.type == "item" then
+            if sig.signal and sig.signal.name then
                 signals[sig.signal.name] = (signals[sig.signal.name] or 0) + sig.count
             end
         end
@@ -177,6 +180,8 @@ local function process_buy_chests()
             storage.buy_chests[unit_number] = nil
         else
             local signals = read_circuit_signals(data.chest)
+            local cb = data.chest.get_or_create_control_behavior()
+            if cb.read_contents then cb.read_contents = false end
             if next(signals) then
                 local inventory = data.chest.get_inventory(defines.inventory.chest)
 
