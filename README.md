@@ -101,19 +101,30 @@ luacheck control.lua data.lua
 
 Factorio's headless mode can load the mod and start a game without a GUI, catching runtime errors before human testing. You need a Factorio installation (headless or full).
 
+Find your Factorio binary:
+
 ```sh
-FACTORIO=~/.factorio
+# Steam on Linux (default)
+FACTORIO=~/.local/share/Steam/steamapps/common/Factorio/bin/x64/factorio
+
+# Headless server install
+FACTORIO=/opt/factorio/bin/x64/factorio
+```
+
+Run the smoke tests:
+
+```sh
 MODS=~/.factorio/mods
 
 # 1. Validate prototype loading (data stage only)
-factorio --mod-directory "$MODS" --dump-data
+$FACTORIO --mod-directory "$MODS" --dump-data
 
 # 2. Create a save and run for a few ticks
-factorio --mod-directory "$MODS" --create /tmp/test-save.zip --map-gen-settings "$FACTORIO/config/map-gen-settings.example.json"
-factorio --mod-directory "$MODS" --load-game /tmp/test-save.zip --until-tick 600
+$FACTORIO --mod-directory "$MODS" --create /tmp/test-save.zip
+$FACTORIO --mod-directory "$MODS" --load-game /tmp/test-save.zip --until-tick 600
 ```
 
-`--dump-data` loads all mods, validates prototype definitions, dumps `data.raw` as JSON, and exits. This catches data-stage errors quickly.
+`--dump-data` loads all mods, validates prototype definitions, and exits. This catches data-stage errors quickly.
 
 `--until-tick 600` runs the game for 600 ticks (10 seconds of game time) then exits. Check the log at `~/.factorio/factorio-current.log` for errors.
 
