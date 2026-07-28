@@ -1,0 +1,25 @@
+{
+    "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+    "runtime.version": "Lua 5.2",
+    "runtime.special": {
+        "describe": "disable"
+    },
+    "runtime.builtin": {
+        "io": "disable",
+        "os": "disable",
+        "coroutine": "disable"
+    },
+    "workspace.library": [
+        "factorio/library"
+    ],
+    "workspace.checkThirdParty": false,
+    "diagnostics.globals": [
+        "game", "script", "remote", "commands", "rendering",
+        "storage", "defines", "settings", "mods", "data",
+        "data_raw", "log", "localised_print",
+        "__DebugAdapter", "__Profiler"
+    ],
+    "diagnostics.unusedLocalExclude": ["_*"],
+    "type.runtime.version": "Lua 5.2",
+    "hint.enable": false
+}
