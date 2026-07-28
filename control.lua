@@ -138,14 +138,52 @@ script.on_event(defines.events.on_gui_click, function(event)
         if not player then return end
         local frame = player.gui.screen.otc_market_frame
         if not frame then return end
-        local search_frame = frame.otc_market_search_frame
+        local search_frame = frame.title_flow.otc_market_search_frame
         if not search_frame then return end
+        local drag = frame.title_flow.otc_market_drag
         search_frame.visible = not search_frame.visible
-        if not search_frame.visible then
+        if search_frame.visible then
+            if drag then
+                drag.style.horizontally_stretchable = false
+                drag.style.width = 24
+            end
+        else
             local field = search_frame.otc_market_search
             if field then field.text = "" end
+            if drag then
+                drag.style.width = nil
+                drag.style.horizontally_stretchable = true
+            end
             market_gui.rebuild_market_list(player)
         end
+    end
+
+    local filter_mode = string.match(event.element.name, "^otc_market_filter_(.+)$")
+    if filter_mode then
+        local player = game.get_player(event.player_index)
+        if not player then return end
+        local player_data = storage.players and storage.players[player.index]
+        if player_data then
+            player_data.market_filter = filter_mode
+        end
+        market_gui.rebuild_market_list(player)
+    end
+end)
+
+script.on_event(defines.events.on_gui_checked_state_changed, function(event)
+    local item_name = string.match(event.element.name, "^otc_pin_(.+)$")
+    if item_name then
+        local player = game.get_player(event.player_index)
+        if not player then return end
+        local player_data = storage.players and storage.players[player.index]
+        if not player_data then return end
+        player_data.pinned_items = player_data.pinned_items or {}
+        if event.element.state then
+            player_data.pinned_items[item_name] = true
+        else
+            player_data.pinned_items[item_name] = nil
+        end
+        market_gui.rebuild_market_list(player)
     end
 end)
 

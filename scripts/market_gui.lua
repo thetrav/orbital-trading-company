@@ -74,15 +74,32 @@ function M.update_credits_gui(player_index)
     label.caption = utils.format_number(credits)
 end
 
+local function get_player_filter(player_index)
+    local player_data = storage.players and storage.players[player_index]
+    return player_data and player_data.market_filter or "all"
+end
+
+local function is_item_visible(item_name, player_index)
+    local mode = get_player_filter(player_index)
+    if mode == "none" then return false end
+    if mode == "all" then return true end
+    local player_data = storage.players and storage.players[player_index]
+    return player_data and player_data.pinned_items and player_data.pinned_items[item_name] or false
+end
+
 function M.rebuild_market_list(player)
     local player_data = storage.players and storage.players[player.index]
     if not player_data then return end
+
+    if not player_data.allowed_items then
+        player_data.allowed_items = item_filter.get_allowed_items(player.force)
+    end
 
     local frame = player.gui.screen.otc_market_frame
     if not frame then return end
 
     local search = ""
-    local search_frame = frame.otc_market_search_frame
+    local search_frame = frame.title_flow.otc_market_search_frame
     if search_frame and search_frame.visible then
         local field = search_frame.otc_market_search
         if field and field.text then
@@ -90,8 +107,33 @@ function M.rebuild_market_list(player)
         end
     end
 
+    local old_filter = frame.otc_market_filter_flow
+    if old_filter then old_filter.destroy() end
+
     local old_inner = frame.otc_market_inner
     if old_inner then old_inner.destroy() end
+
+    local mode = get_player_filter(player.index)
+    local modes = {"all", "pinned", "none"}
+    local labels = {"All", "Pinned", "None"}
+
+    local filter_flow = frame.add {
+        type = "flow",
+        name = "otc_market_filter_flow",
+        direction = "horizontal",
+    }
+    filter_flow.style.horizontal_spacing = 2
+    filter_flow.style.bottom_margin = 4
+
+    for i, m in ipairs(modes) do
+        local btn = filter_flow.add {
+            type = "sprite-button",
+            name = "otc_market_filter_" .. m,
+            caption = labels[i],
+            style = mode == m and "button" or "tool_button",
+        }
+        btn.style.width = 62
+    end
 
     local inner = frame.add {
         type = "frame",
@@ -107,20 +149,28 @@ function M.rebuild_market_list(player)
         name = "otc_market_list",
         direction = "vertical",
     }
-    list.style.height = 420
+    list.style.height = 400
     list.style.horizontally_stretchable = true
 
-    for _, item in pairs(player_data.allowed_items) do
-        if search == "" or string.find(string.lower(item.name), search, 1, true) then
+    player_data.pinned_items = player_data.pinned_items or {}
+
+    local rendered = 0
+    for _, item in pairs(player_data.allowed_items or {}) do
+        local matches_search = search == "" or string.find(string.lower(item.name), search, 1, true)
+        local matches_filter = is_item_visible(item.name, player.index)
+        if matches_search and matches_filter then
             local row = list.add {
                 type = "flow",
+                name = "otc_market_row_" .. item.name,
                 direction = "horizontal",
             }
             row.style.vertical_align = "center"
 
+            local pinned = player_data.pinned_items[item.name] or false
             row.add {
-                type = "sprite-button",
-                style = "slot_button",
+                type = "checkbox",
+                name = "otc_pin_" .. item.name,
+                state = pinned,
             }
 
             row.add {
@@ -149,6 +199,7 @@ function M.rebuild_market_list(player)
                 caption = trend_text,
             }
             trend.style.font_color = trend_color
+            rendered = rendered + 1
         end
     end
 end
@@ -164,7 +215,7 @@ function M.create_market_gui(player)
         direction = "vertical",
         style = "frame",
     }
-    frame.style.size = {200, 500}
+    frame.style.size = {210, 500}
     frame.style.padding = 4
 
     local title_flow = frame.add {
@@ -184,11 +235,25 @@ function M.create_market_gui(player)
 
     local drag = title_flow.add {
         type = "empty-widget",
+        name = "otc_market_drag",
         style = "draggable_space",
         ignored_by_interaction = true,
     }
     drag.style.height = 24
     drag.style.horizontally_stretchable = true
+
+    local search_flow = title_flow.add {
+        type = "flow",
+        name = "otc_market_search_frame",
+        direction = "horizontal",
+    }
+    search_flow.visible = false
+
+    local search_field = search_flow.add {
+        type = "textfield",
+        name = "otc_market_search",
+    }
+    search_field.style.width = 80
 
     title_flow.add {
         type = "sprite-button",
@@ -196,25 +261,6 @@ function M.create_market_gui(player)
         style = "tool_button",
         sprite = "utility/search",
     }
-
-    local search_flow = frame.add {
-        type = "flow",
-        name = "otc_market_search_frame",
-        direction = "horizontal",
-    }
-    search_flow.style.horizontally_stretchable = true
-    search_flow.visible = false
-
-    search_flow.add {
-        type = "sprite",
-        sprite = "utility/search",
-    }
-
-    local search_field = search_flow.add {
-        type = "textfield",
-        name = "otc_market_search",
-    }
-    search_field.style.horizontally_stretchable = true
 
     local player_data = storage.players and storage.players[player.index]
     if player_data then

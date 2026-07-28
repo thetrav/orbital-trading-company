@@ -15,3 +15,6 @@
 * Are buy/sell points limited, or constructable?
 * How to best manage throughput on buy/sell points, loaders, or bigger entities, or more entities?
 
+# base expansion
+
+* allow player to purchase modules for credits, use gates to specify where modules go and connect them
