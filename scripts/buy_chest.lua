@@ -6,32 +6,7 @@ local supply_demand = require("scripts.supply_demand")
 local M = {}
 
 local BUY_CHEST_NAME = "otc-buy-chest"
-local COMBINATOR_NAME = "constant-combinator"
 local BUY_MULTIPLIER = 1.01
-
-local function find_combinator_above(chest)
-    local pos = chest.position
-    local search_area = {
-        { pos.x - 0.5, pos.y - 1.5 },
-        { pos.x + 0.5, pos.y - 0.5 },
-    }
-    local entities = chest.surface.find_entities_filtered {
-        area = search_area,
-        name = COMBINATOR_NAME,
-        force = chest.force,
-    }
-    return entities[1]
-end
-
-local function connect_combinator_to_chest(combinator, chest)
-    if combinator and combinator.valid and chest and chest.valid then
-        local combinator_out = combinator.get_wire_connector(defines.wire_connector_id.circuit_green, true)
-        local chest_in = chest.get_wire_connector(defines.wire_connector_id.circuit_green, true)
-        if combinator_out and chest_in then
-            combinator_out.connect_to(chest_in, false, defines.wire_origin.player)
-        end
-    end
-end
 
 local function read_circuit_signals(chest)
     local signals = {}
@@ -61,16 +36,8 @@ function M.register(entity)
     local cb = entity.get_or_create_control_behavior()
     cb.read_contents = false
 
-    local combinator = find_combinator_above(entity)
-    if not combinator then return end
-
-    connect_combinator_to_chest(combinator, entity)
-
     storage.buy_chests = storage.buy_chests or {}
-    storage.buy_chests[entity.unit_number] = {
-        chest = entity,
-        combinator = combinator,
-    }
+    storage.buy_chests[entity.unit_number] = { chest = entity }
 end
 
 function M.unregister(unit_number)
@@ -82,7 +49,7 @@ function M.process()
     if not storage.buy_chests then return end
 
     for unit_number, data in pairs(storage.buy_chests) do
-        if not data.chest.valid or not data.combinator.valid then
+        if not data.chest.valid then
             storage.buy_chests[unit_number] = nil
         else
             local signals = read_circuit_signals(data.chest)

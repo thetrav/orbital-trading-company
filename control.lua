@@ -7,10 +7,8 @@ local supply_demand = require("scripts.supply_demand")
 
 local BUY_CHEST_NAME = "otc-buy-chest"
 local SELL_CHEST_NAME = "otc-sell-chest"
-local COMBINATOR_NAME = "constant-combinator"
-local BUY_CHEST_POSITION = { x = -4, y = 0 }
-local COMBINATOR_POSITION = { x = -4, y = -1 }
-local SELL_CHEST_POSITION = { x = 4, y = 0 }
+local BUY_CHEST_POSITION = { x = -3, y = 0 }
+local SELL_CHEST_POSITION = { x = 2, y = 0 }
 
 script.on_init(function()
     if remote.interfaces["freeplay"] then
@@ -50,19 +48,15 @@ script.on_init(function()
         market_gui.init_player(player)
     end
 
-    local combinator = surface.create_entity {
-        name = COMBINATOR_NAME,
-        position = COMBINATOR_POSITION,
-        force = "player",
-    }
-    if combinator then
-        combinator.minable = false
-        combinator.destructible = false
-
-        local behaviour = combinator.get_or_create_control_behavior()
-        local section = behaviour.get_section(1)
-        section.set_slot(1, { value = { type = "item", name = "iron-ore", quality = "normal" }, min = 1 })
-        section.set_slot(2, { value = { type = "item", name = "coal", quality = "normal" }, min = 1 })
+    if remote.interfaces["freeplay"] then
+        remote.call("freeplay", "set_created_items", {
+            ["iron-plate"] = 8,
+            ["pistol"] = 1,
+            ["firearm-magazine"] = 10,
+            ["stone-furnace"] = 1,
+            ["burner-inserter"] = 2,
+            ["constant-combinator"] = 1,
+        })
     end
 
     local chest = surface.create_entity {
