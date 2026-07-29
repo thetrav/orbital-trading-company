@@ -6,6 +6,7 @@ local M = {}
 
 local HUB_COST = 1
 local CORRIDOR_COST = 2
+local FACTORY_COST = 4
 
 function M.create_expand_gui(player)
     if player.gui.screen.otc_expand_frame then
@@ -137,6 +138,7 @@ function M.rebuild(player)
 
     add_listing("item/gate", "Hub", HUB_COST, "hub")
     add_listing("item/transport-belt", "Corridor", CORRIDOR_COST, "corridor")
+    add_listing("item/assembling-machine-2", "Factory", FACTORY_COST, "factory")
 
     local spacer = list.add {
         type = "empty-widget",
@@ -219,7 +221,7 @@ function M.handle_selection_change(player, shape)
 
     local buy_btn = get_buy_button(list)
     if buy_btn then
-        local cost = (shape == "corridor") and CORRIDOR_COST or HUB_COST
+        local cost = shape == "hub" and HUB_COST or shape == "corridor" and CORRIDOR_COST or FACTORY_COST
         buy_btn.enabled = true
         buy_btn.caption = "Buy (₾" .. utils.format_number(cost) .. ")"
     end
@@ -280,7 +282,7 @@ function M.handle_buy_expansion(player)
         return
     end
 
-    local cost = (shape == "corridor") and CORRIDOR_COST or HUB_COST
+    local cost = shape == "hub" and HUB_COST or shape == "corridor" and CORRIDOR_COST or FACTORY_COST
     if player_data.credits < cost then
         player.print("Not enough credits!")
         return

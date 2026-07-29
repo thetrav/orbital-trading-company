@@ -3,6 +3,7 @@ local M = {}
 local platform_gates = require("scripts.platform_gates")
 local hub_shape = require("scripts.shapes.hub")
 local corridor_shape = require("scripts.shapes.corridor")
+local factory_shape = require("scripts.shapes.factory")
 
 local R = 5
 
@@ -187,6 +188,22 @@ function M.show_preview(surface, player, gate_pos, shape)
 
     elseif shape == "corridor" then
         tiles, walls = corridor_shape.get_positions(gate_pos, dir)
+    elseif shape == "factory" then
+        local cx, cy
+        if dir == "east" then cx, cy = gate_pos.x + 18, gate_pos.y
+        elseif dir == "west" then cx, cy = gate_pos.x - 19, gate_pos.y
+        elseif dir == "north" then cx, cy = gate_pos.x, gate_pos.y + 18
+        elseif dir == "south" then cx, cy = gate_pos.x, gate_pos.y - 19
+        else return {} end
+
+        local conn_side
+        if dir == "east" then conn_side = "west"
+        elseif dir == "west" then conn_side = "east"
+        elseif dir == "north" then conn_side = "south"
+        else conn_side = "north"
+        end
+
+        tiles, walls = factory_shape.get_positions(cx, cy, conn_side, gate_pos)
     else
         return {}
     end
@@ -285,6 +302,33 @@ function M.expand_from_gate(surface, gate_pos, shape)
             local far_computer = place_computer(surface, gate_pos.x, fgy, far_side)
             register_gate(gate_pos.x, fgy, far_side, far_gate, far_computer)
         end
+
+    elseif shape == "factory" then
+        local CX, CY, conn_side
+        if dir == "east" then CX, CY, conn_side = gate_pos.x + 18, gate_pos.y, "west"
+        elseif dir == "west" then CX, CY, conn_side = gate_pos.x - 19, gate_pos.y, "east"
+        elseif dir == "north" then CX, CY, conn_side = gate_pos.x, gate_pos.y + 18, "south"
+        elseif dir == "south" then CX, CY, conn_side = gate_pos.x, gate_pos.y - 19, "north"
+        else return false end
+
+        local box = factory_shape.get_bounding_box(CX, CY)
+        local entities = surface.find_entities_filtered{area = box}
+        for _, entity in ipairs(entities) do
+            if entity.valid and entity.type ~= "item-on-ground" and entity.name ~= "tile-ghost" then
+                return false, "Not enough space!"
+            end
+        end
+
+        platform_gates.destroy_gate_control(key)
+
+        local tiles, walls = factory_shape.get_positions(CX, CY, conn_side, gate_pos)
+        apply_tiles(surface, tiles)
+        apply_walls(surface, walls)
+
+        local gx = CX + (conn_side == "east" and 16 or conn_side == "west" and -15 or 0)
+        local gy = CY + (conn_side == "north" and 16 or conn_side == "south" and -15 or 0)
+        local gate_entity = place_gate(surface, conn_side, {gx, gy})
+        register_gate(gx, gy, conn_side, gate_entity)
 
     else
         return false
