@@ -26,10 +26,12 @@ end
 
 function M.init_gates()
     storage.gates = {}
+    storage.gates_by_id = {}
     for _, pos in ipairs(M.get_gate_positions()) do
         local key = pos.x .. "," .. pos.y
         storage.gates[key] = {
             pos = pos,
+            key = key,
             expanded = false,
         }
     end
@@ -45,8 +47,13 @@ function M.place_gate_controls(surface)
         if ctrl then
             ctrl.minable = false
             ctrl.destructible = false
+            storage.gates_by_id[ctrl.unit_number] = gate
         end
     end
+end
+
+function M.get_gate_by_unit(unit_number)
+    return storage.gates_by_id and storage.gates_by_id[unit_number]
 end
 
 function M.destroy_gate_control(surface, pos)

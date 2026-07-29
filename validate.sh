@@ -14,7 +14,7 @@ echo ""
 
 echo "=== 2/5 lua-language-server type check ==="
 # Performs full workspace diagnosis using .luarc.json config
-lua-language-server --check="$MOD_DIR" --check_format=pretty 2>&1; ec=$?
+lua-language-server --check="$MOD_DIR" --check_format=pretty --metapath="$HOME/.cache/lua-language-server/meta" 2>&1; ec=$?
 if [ "$ec" -ne 0 ]; then RC=1; fi
 echo ""
 

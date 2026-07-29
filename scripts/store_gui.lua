@@ -156,26 +156,16 @@ function M.handle_buy_expansion(player)
     end
 end
 
-function M.show_for_gate(player, gate_pos)
-    local tag = "[otc] show_for_gate tick=" .. game.tick .. " p=" .. player.index
+function M.show_for_gate(player, gate_state)
     local player_data = storage.players and storage.players[player.index]
-    if not player_data then
-        log(tag .. " NO_PLAYER_DATA"); return end
+    if not player_data then return end
 
-    local gate_key = gate_pos.x .. "," .. gate_pos.y
-    local gate_state = storage.gates and storage.gates[gate_key]
-    if not gate_state or gate_state.expanded then
-        log(tag .. " NO_GATE_STATE(" .. gate_key .. ")"); return end
-
-    player_data.active_gate = gate_key
+    player_data.active_gate = gate_state.key
     M.rebuild(player)
 
     local frame = player.gui.screen.otc_store_frame
     if frame then
-        log(tag .. " SHOW")
         frame.visible = true
-    else
-        log(tag .. " NO_FRAME")
     end
 end
 

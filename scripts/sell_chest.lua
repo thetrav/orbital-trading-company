@@ -39,7 +39,8 @@ function M.process()
                             if item_filter.is_item_allowed(item.name, chest.force) then
                                 local removed = inventory.remove({ name = item.name, count = item.count })
                                 if removed > 0 then
-                                    local sell_value = math.floor(removed * utils.get_price(item.name) * SELL_MULTIPLIER + 0.5)
+                                    local price = utils.get_price(item.name)
+                                    local sell_value = math.floor(removed * price * SELL_MULTIPLIER + 0.5)
                                     player_data.credits = player_data.credits + sell_value
                                     supply_demand.record_sell(item.name, removed)
                                     market_gui.update_credits_gui(player.index)

@@ -130,20 +130,15 @@ end)
 
 script.on_event(defines.events.on_gui_opened, function(event)
     local entity = event.entity
-    if not entity or entity.name ~= "otc-gate-control" then
-        return
-    end
+    if not entity or entity.name ~= "otc-gate-control" then return end
 
     local player = game.get_player(event.player_index)
+    if not player then return end
     player.opened = nil
 
-    local key = ("%d,%d")
-        :format(math.floor(entity.position.x + 0.5),
-                math.floor(entity.position.y + 0.5))
-
-    local gate = storage.gates[key]
+    local gate = platform_gates.get_gate_by_unit(entity.unit_number)
     if gate and not gate.expanded then
-        store_gui.show_for_gate(player, gate.pos)
+        store_gui.show_for_gate(player, gate)
     end
 end)
 

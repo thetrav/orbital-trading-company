@@ -78,7 +78,7 @@ function M.calculate()
         iteration = iteration + 1
         local level_techs = {}
 
-        for name, tech in pairs(remaining_techs) do
+        for _, tech in pairs(remaining_techs) do
             local all_prereqs_met = true
             for _, prereq in pairs(tech.prerequisites) do
                 if not processed_techs[prereq.name] then
