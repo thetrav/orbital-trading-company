@@ -4,7 +4,8 @@ local platform = require("scripts.platform")
 
 local M = {}
 
-local EXPANSION_COST = 1
+local HUB_COST = 1
+local CORRIDOR_COST = 2
 
 function M.create_store_gui(player)
     if player.gui.screen.otc_store_frame then
@@ -97,35 +98,40 @@ function M.rebuild(player)
         return
     end
 
-    local row = list.add {
-        type = "flow",
-        direction = "horizontal",
-    }
-    row.style.vertical_align = "center"
+    local function add_listing(sprite, label, cost, button_name)
+        local row = list.add {
+            type = "flow",
+            direction = "horizontal",
+        }
+        row.style.vertical_align = "center"
 
-    row.add {
-        type = "sprite",
-        sprite = "item/gate",
-    }
+        row.add {
+            type = "sprite",
+            sprite = sprite,
+        }
 
-    row.add {
-        type = "label",
-        caption = "Platform Expansion",
-    }
+        row.add {
+            type = "label",
+            caption = label,
+        }
 
-    row.add {
-        type = "label",
-        caption = "₾" .. utils.format_number(EXPANSION_COST),
-    }
+        row.add {
+            type = "label",
+            caption = "₾" .. utils.format_number(cost),
+        }
 
-    row.add {
-        type = "button",
-        name = "otc_store_buy_expansion",
-        caption = "Buy",
-    }
+        row.add {
+            type = "button",
+            name = button_name,
+            caption = "Buy",
+        }
+    end
+
+    add_listing("item/gate", "Platform Expansion", HUB_COST, "otc_store_buy_expansion_hub")
+    add_listing("item/transport-belt", "Corridor", CORRIDOR_COST, "otc_store_buy_expansion_corridor")
 end
 
-function M.handle_buy_expansion(player)
+function M.handle_buy_expansion(player, shape)
     local player_data = storage.players and storage.players[player.index]
     if not player_data then return end
 
@@ -141,15 +147,16 @@ function M.handle_buy_expansion(player)
         return
     end
 
-    if player_data.credits < EXPANSION_COST then
+    local cost = (shape == "corridor") and CORRIDOR_COST or HUB_COST
+    if player_data.credits < cost then
         player.print("Not enough credits!")
         return
     end
 
     local surface = game.surfaces[1]
-    local ok, err = platform.expand_from_gate(surface, gate_state.pos)
+    local ok, err = platform.expand_from_gate(surface, gate_state.pos, shape)
     if ok then
-        player_data.credits = player_data.credits - EXPANSION_COST
+        player_data.credits = player_data.credits - cost
         gate_state.expanded = true
         market_gui.update_credits_gui(player.index)
         player.print("Platform expanded!")

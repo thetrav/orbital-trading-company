@@ -189,10 +189,16 @@ script.on_event(defines.events.on_gui_click, function(event)
         store_gui.close(player)
     end
 
-    if event.element.name == "otc_store_buy_expansion" then
+    if event.element.name == "otc_store_buy_expansion_hub" then
         local player = game.get_player(event.player_index)
         if not player then return end
-        store_gui.handle_buy_expansion(player)
+        store_gui.handle_buy_expansion(player, "hub")
+    end
+
+    if event.element.name == "otc_store_buy_expansion_corridor" then
+        local player = game.get_player(event.player_index)
+        if not player then return end
+        store_gui.handle_buy_expansion(player, "corridor")
     end
 end)
 
