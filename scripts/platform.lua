@@ -230,12 +230,12 @@ function M.show_preview(surface, player, gate_pos, shape)
         tiles, walls = factory_shape.get_positions(cx, cy, conn_side, gate_pos)
 
     elseif shape == "iron_asteroid" then
-        local t, resources = iron_asteroid_shape.get_positions(gate_pos, dir)
+        local t, resources, awalls = iron_asteroid_shape.get_positions(gate_pos, dir)
         tiles = {}
         for _, entry in ipairs(t) do
             table.insert(tiles, {entry[1], entry[2]})
         end
-        return render_preview(surface, player, tiles, {}, resources)
+        return render_preview(surface, player, tiles, awalls, resources)
     else
         return {}
     end
@@ -375,18 +375,16 @@ function M.expand_from_gate(surface, gate_pos, shape)
 
         platform_gates.destroy_gate_control(key)
 
-        local tiles, resources = iron_asteroid_shape.get_positions(gate_pos, dir)
+        local tiles, resources, walls = iron_asteroid_shape.get_positions(gate_pos, dir)
         apply_custom_tiles(surface, tiles)
         place_resources(surface, resources)
+        apply_walls(surface, walls)
 
-        local gx, gy
-        if dir == "east" then gx, gy = gate_pos.x + 14, gate_pos.y
-        elseif dir == "west" then gx, gy = gate_pos.x - 14, gate_pos.y
-        elseif dir == "north" then gx, gy = gate_pos.x, gate_pos.y + 14
-        elseif dir == "south" then gx, gy = gate_pos.x, gate_pos.y - 14
+        local gate_pos2 = iron_asteroid_shape.get_gate_pos(gate_pos, dir)
+        if gate_pos2 then
+            local asteroid_gate = place_gate(surface, dir, gate_pos2)
+            register_gate(gate_pos2.x, gate_pos2.y, dir, asteroid_gate)
         end
-        local asteroid_gate = place_gate(surface, dir, {gx, gy})
-        register_gate(gx, gy, dir, asteroid_gate)
 
     else
         return false
