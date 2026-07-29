@@ -4,6 +4,7 @@ local platform_gates = require("scripts.platform_gates")
 local hub_shape = require("scripts.shapes.hub")
 local corridor_shape = require("scripts.shapes.corridor")
 local factory_shape = require("scripts.shapes.factory")
+local iron_asteroid_shape = require("scripts.shapes.iron_asteroid")
 
 local R = 5
 
@@ -136,10 +137,24 @@ local function apply_walls(surface, positions)
     end
 end
 
+local function apply_custom_tiles(surface, positions)
+    local t = {}
+    for _, entry in ipairs(positions) do
+        table.insert(t, {name = entry[3], position = {entry[1], entry[2]}})
+    end
+    surface.set_tiles(t, false)
+end
+
+local function place_resources(surface, resources)
+    for _, r in ipairs(resources) do
+        surface.create_entity{name = r[3], position = {r[1], r[2]}, amount = r[4]}
+    end
+end
+
 local TILE_GHOST = {r = 0, g = 0.1, b = 0.3, a = 0.12}
 local WALL_GHOST = {r = 0.9, g = 0.9, b = 1, a = 0.85}
 
-local function render_preview(surface, player, tiles, walls)
+local function render_preview(surface, player, tiles, walls, resources)
     local renderings = {}
     for _, p in ipairs(tiles) do
         table.insert(renderings, rendering.draw_rectangle{
@@ -156,6 +171,15 @@ local function render_preview(surface, player, tiles, walls)
             sprite = "entity/otc-platform-wall",
             tint = WALL_GHOST,
             target = {position = {p[1] + 0.5, p[2] + 0.5}},
+            surface = surface,
+            players = {player},
+        })
+    end
+    for _, r in ipairs(resources or {}) do
+        table.insert(renderings, rendering.draw_sprite{
+            sprite = "item/iron-ore",
+            tint = {r = 0.8, g = 0.5, b = 0.2, a = 1},
+            target = {position = {r[1] + 0.5, r[2] + 0.5}},
             surface = surface,
             players = {player},
         })
@@ -204,6 +228,14 @@ function M.show_preview(surface, player, gate_pos, shape)
         end
 
         tiles, walls = factory_shape.get_positions(cx, cy, conn_side, gate_pos)
+
+    elseif shape == "iron_asteroid" then
+        local t, resources = iron_asteroid_shape.get_positions(gate_pos, dir)
+        tiles = {}
+        for _, entry in ipairs(t) do
+            table.insert(tiles, {entry[1], entry[2]})
+        end
+        return render_preview(surface, player, tiles, {}, resources)
     else
         return {}
     end
@@ -329,6 +361,32 @@ function M.expand_from_gate(surface, gate_pos, shape)
         local gy = CY + (conn_side == "north" and 16 or conn_side == "south" and -15 or 0)
         local gate_entity = place_gate(surface, conn_side, {gx, gy})
         register_gate(gx, gy, conn_side, gate_entity)
+
+    elseif shape == "iron_asteroid" then
+        local box = iron_asteroid_shape.get_bounding_box(gate_pos, dir)
+        if not box then return false end
+
+        local entities = surface.find_entities_filtered{area = box}
+        for _, entity in ipairs(entities) do
+            if entity.valid and entity.type ~= "item-on-ground" and entity.name ~= "tile-ghost" then
+                return false, "Not enough space!"
+            end
+        end
+
+        platform_gates.destroy_gate_control(key)
+
+        local tiles, resources = iron_asteroid_shape.get_positions(gate_pos, dir)
+        apply_custom_tiles(surface, tiles)
+        place_resources(surface, resources)
+
+        local gx, gy
+        if dir == "east" then gx, gy = gate_pos.x + 14, gate_pos.y
+        elseif dir == "west" then gx, gy = gate_pos.x - 14, gate_pos.y
+        elseif dir == "north" then gx, gy = gate_pos.x, gate_pos.y + 14
+        elseif dir == "south" then gx, gy = gate_pos.x, gate_pos.y - 14
+        end
+        local asteroid_gate = place_gate(surface, dir, {gx, gy})
+        register_gate(gx, gy, dir, asteroid_gate)
 
     else
         return false
