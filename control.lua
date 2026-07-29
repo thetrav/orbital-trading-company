@@ -2,7 +2,7 @@ local platform = require("scripts.platform")
 local platform_gates = require("scripts.platform_gates")
 local pricing = require("scripts.pricing")
 local market_gui = require("scripts.market_gui")
-local store_gui = require("scripts.store_gui")
+local expand_gui = require("scripts.expand_gui")
 local buy_chest = require("scripts.buy_chest")
 local sell_chest = require("scripts.sell_chest")
 local supply_demand = require("scripts.supply_demand")
@@ -51,7 +51,7 @@ script.on_init(function()
     for _, player in pairs(game.connected_players) do
         player.teleport({0.5, 0.5}, surface)
         market_gui.init_player(player)
-        store_gui.init_player(player)
+        expand_gui.init_player(player)
     end
 
     if remote.interfaces["freeplay"] then
@@ -97,7 +97,7 @@ end)
 script.on_event(defines.events.on_player_created, function(event)
     local player = game.get_player(event.player_index)
     market_gui.init_player(player)
-    store_gui.init_player(player)
+    expand_gui.init_player(player)
 end)
 
 script.on_event(defines.events.on_player_joined_game, function(event)
@@ -106,8 +106,8 @@ script.on_event(defines.events.on_player_joined_game, function(event)
         if not player.gui.screen.otc_credits_frame then
             market_gui.init_player(player)
         end
-        if not player.gui.screen.otc_store_frame then
-            store_gui.init_player(player)
+        if not player.gui.screen.otc_expand_frame then
+            expand_gui.init_player(player)
         end
     end
 end)
@@ -121,6 +121,9 @@ script.on_nth_tick(1, function()
     buy_chest.process()
     sell_chest.process()
     supply_demand.process_tick()
+    for _, player in pairs(game.connected_players) do
+        expand_gui.check_proximity(player)
+    end
 end)
 
 script.on_event(defines.events.on_built_entity, function(event)
@@ -128,7 +131,7 @@ script.on_event(defines.events.on_built_entity, function(event)
     sell_chest.register(event.created_entity)
 end)
 
-platform_gates.register_events(script.on_event, store_gui)
+platform_gates.register_events(script.on_event, expand_gui)
 
 script.on_event(defines.events.on_entity_died, function(event)
     if event.entity.name == BUY_CHEST_NAME then
@@ -183,22 +186,24 @@ script.on_event(defines.events.on_gui_click, function(event)
         market_gui.rebuild_market_list(player)
     end
 
-    if event.element.name == "otc_store_close" then
+    local shape_name = string.match(event.element.name, "^otc_shape_(.+)$")
+    if shape_name then
         local player = game.get_player(event.player_index)
         if not player then return end
-        store_gui.close(player)
+        expand_gui.handle_selection_change(player, shape_name)
+        return
     end
 
-    if event.element.name == "otc_store_buy_expansion_hub" then
+    if event.element.name == "otc_expand_close" then
         local player = game.get_player(event.player_index)
         if not player then return end
-        store_gui.handle_buy_expansion(player, "hub")
+        expand_gui.close(player)
     end
 
-    if event.element.name == "otc_store_buy_expansion_corridor" then
+    if event.element.name == "otc_expand_buy_button" then
         local player = game.get_player(event.player_index)
         if not player then return end
-        store_gui.handle_buy_expansion(player, "corridor")
+        expand_gui.handle_buy_expansion(player)
     end
 end)
 
@@ -217,6 +222,7 @@ script.on_event(defines.events.on_gui_checked_state_changed, function(event)
         end
         market_gui.rebuild_market_list(player)
     end
+
 end)
 
 script.on_event(defines.events.on_gui_text_changed, function(event)

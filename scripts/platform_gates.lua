@@ -124,16 +124,24 @@ function M.destroy_gate_control(key)
     end
 end
 
-function M.register_events(register, store_gui_ref)
+function M.register_events(register, expand_gui_ref)
     register(defines.events.on_gui_opened, function(event)
         local entity = event.entity
         if not entity or entity.name ~= "otc-gate-computer" then return end
         local player = game.get_player(event.player_index)
         if not player then return end
+
         player.opened = nil
+
+        local dx = player.position.x - entity.position.x
+        local dy = player.position.y - entity.position.y
+        if dx * dx + dy * dy > 25 then
+            player.print("Too far from the gate!")
+            return
+        end
         local gate = M.get_gate_by_unit(entity.unit_number)
         if gate and not gate.expanded then
-            store_gui_ref.show_for_gate(player, gate)
+            expand_gui_ref.show_for_gate(player, gate)
         end
     end)
 end

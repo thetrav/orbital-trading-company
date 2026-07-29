@@ -1,6 +1,8 @@
 local M = {}
 
 local platform_gates = require("scripts.platform_gates")
+local hub_shape = require("scripts.shapes.hub")
+local corridor_shape = require("scripts.shapes.corridor")
 
 local R = 5
 
@@ -53,15 +55,6 @@ function M.build_platform(surface, area)
     for _, pos in ipairs(wall_positions) do
         place_wall(surface, pos)
     end
-end
-
--- Shared helpers
-local function add_tile(tiles, p)
-    table.insert(tiles, {name = "otc-platform", position = p})
-end
-
-local function add_wall(walls, p)
-    table.insert(walls, p)
 end
 
 local function side_is_vertical(s)
@@ -128,173 +121,84 @@ local function register_gate(gx, gy, side, gate_entity, computer_entity)
     end
 end
 
--- Hub shape: 11x11 inner with wall border at ±6, 4 airlocks
-local function build_hub(surface, cx, cy, conn_side)
-    local tiles = {}
-    local walls = {}
-
-    for x = cx - 5, cx + 5 do
-        for y = cy - 5, cy + 5 do
-            add_tile(tiles, {x, y})
-        end
+local function apply_tiles(surface, positions)
+    local t = {}
+    for _, p in ipairs(positions) do
+        table.insert(t, {name = "otc-platform", position = p})
     end
+    surface.set_tiles(t, false)
+end
 
-    local function wall_side(vertical, coord, has_gap)
-        if vertical then
-            for y = cy - 6, cy + 6 do
-                add_tile(tiles, {coord, y})
-                if not (has_gap and y == cy) then add_wall(walls, {coord, y}) end
-            end
-        else
-            for x = cx - 6, cx + 6 do
-                add_tile(tiles, {x, coord})
-                if not (has_gap and x == cx) then add_wall(walls, {x, coord}) end
-            end
-        end
-    end
-
-    wall_side(true, cx - 6, true)
-    wall_side(true, cx + 6, true)
-    wall_side(false, cy - 6, true)
-    wall_side(false, cy + 6, true)
-
-    for _, side in ipairs{"east", "west", "north", "south"} do
-        if side_is_vertical(side) then
-            local ax = cx + (side == "east" and 7 or -7)
-            add_tile(tiles, {ax, cy}); add_tile(tiles, {ax, cy + 1}); add_tile(tiles, {ax, cy - 1})
-            add_wall(walls, {ax, cy + 1}); add_wall(walls, {ax, cy - 1})
-        else
-            local ay = cy + (side == "north" and 7 or -7)
-            add_tile(tiles, {cx, ay}); add_tile(tiles, {cx + 1, ay}); add_tile(tiles, {cx - 1, ay})
-            add_wall(walls, {cx + 1, ay}); add_wall(walls, {cx - 1, ay})
-        end
-    end
-
-    surface.set_tiles(tiles, false)
-    for _, pos in ipairs(walls) do
-        place_wall(surface, pos)
-    end
-
-    for _, side in ipairs{"east", "west", "north", "south"} do
-        local gx = cx + (side == "east" and 6 or side == "west" and -6 or 0)
-        local gy = cy + (side == "north" and 6 or side == "south" and -6 or 0)
-        local gate_entity = place_gate(surface, side, {gx, gy})
-        local computer_entity
-        if not conn_side or side ~= conn_side then
-            computer_entity = place_computer(surface, gx, gy, side)
-        end
-        register_gate(gx, gy, side, gate_entity, computer_entity)
+local function apply_walls(surface, positions)
+    for _, p in ipairs(positions) do
+        place_wall(surface, p)
     end
 end
 
--- Corridor shape: 20x3 inner, airlocks on both narrow ends, walls on long sides
-local function build_corridor(surface, gate_pos, dir)
-    local gx, gy = gate_pos.x, gate_pos.y
-    local tiles = {}
-    local walls = {}
+local TILE_GHOST = {r = 0, g = 0.1, b = 0.3, a = 0.12}
+local WALL_GHOST = {r = 0.9, g = 0.9, b = 1, a = 0.85}
 
-    local conn_side, far_side
-    if dir == "east" then conn_side, far_side = "west", "east"
-    elseif dir == "west" then conn_side, far_side = "east", "west"
-    elseif dir == "north" then conn_side, far_side = "south", "north"
-    else conn_side, far_side = "north", "south"
+local function render_preview(surface, player, tiles, walls)
+    local renderings = {}
+    for _, p in ipairs(tiles) do
+        table.insert(renderings, rendering.draw_rectangle{
+            color = TILE_GHOST,
+            left_top = {p[1], p[2] + 1},
+            right_bottom = {p[1] + 1, p[2]},
+            filled = true,
+            surface = surface,
+            players = {player},
+        })
+    end
+    for _, p in ipairs(walls) do
+        table.insert(renderings, rendering.draw_sprite{
+            sprite = "entity/otc-platform-wall",
+            tint = WALL_GHOST,
+            target = {position = {p[1] + 0.5, p[2] + 0.5}},
+            surface = surface,
+            players = {player},
+        })
+    end
+    return renderings
+end
+
+function M.show_preview(surface, player, gate_pos, shape)
+    local key = gate_pos.x .. "," .. gate_pos.y
+    local dir = platform_gates.get_gate_dir(key)
+    if not dir then return {} end
+
+    local tiles, walls
+    if shape == "hub" then
+        local cx, cy
+        if dir == "east" then cx, cy = gate_pos.x + 9, gate_pos.y
+        elseif dir == "west" then cx, cy = gate_pos.x - 9, gate_pos.y
+        elseif dir == "north" then cx, cy = gate_pos.x, gate_pos.y + 9
+        elseif dir == "south" then cx, cy = gate_pos.x, gate_pos.y - 9
+        else return {} end
+
+        local conn_side
+        if dir == "east" then conn_side = "west"
+        elseif dir == "west" then conn_side = "east"
+        elseif dir == "north" then conn_side = "south"
+        else conn_side = "north"
+        end
+
+        tiles, walls = hub_shape.get_positions(cx, cy, conn_side, gate_pos)
+
+    elseif shape == "corridor" then
+        tiles, walls = corridor_shape.get_positions(gate_pos, dir)
+    else
+        return {}
     end
 
-    if dir == "east" or dir == "west" then
-        local s = (dir == "east") and 1 or -1
-        local cgx = gx + 3 * s
-        local fgx = gx + 24 * s
-        local cx = gx + 25 * s
+    return render_preview(surface, player, tiles, walls)
+end
 
-        add_tile(tiles, {gx + s, gy}); add_tile(tiles, {gx + 2*s, gy})
-        add_tile(tiles, {gx + s, gy+1}); add_tile(tiles, {gx + s, gy-1})
-        add_tile(tiles, {gx + 2*s, gy+1}); add_tile(tiles, {gx + 2*s, gy-1})
-        add_wall(walls, {gx + s, gy+1}); add_wall(walls, {gx + s, gy-1})
-        add_wall(walls, {gx + 2*s, gy+1}); add_wall(walls, {gx + 2*s, gy-1})
-
-        for y = gy-2, gy+2 do
-            add_tile(tiles, {cgx, y})
-            if y ~= gy then add_wall(walls, {cgx, y}) end
+function M.clear_preview(objects)
+    for _, obj in ipairs(objects) do
+        if obj.valid then
+            obj:destroy()
         end
-
-        local lo = math.min(cgx, fgx)
-        local hi = math.max(cgx, fgx)
-        for x = lo + 1, hi - 1 do
-            for y = gy-1, gy+1 do add_tile(tiles, {x, y}) end
-        end
-
-        for x = lo, hi do
-            add_tile(tiles, {x, gy+2}); add_tile(tiles, {x, gy-2})
-            add_wall(walls, {x, gy+2}); add_wall(walls, {x, gy-2})
-        end
-
-        for y = gy-2, gy+2 do
-            add_tile(tiles, {fgx, y})
-            if y ~= gy then add_wall(walls, {fgx, y}) end
-        end
-
-        add_tile(tiles, {cx, gy}); add_tile(tiles, {cx, gy+1}); add_tile(tiles, {cx, gy-1})
-        add_wall(walls, {cx, gy+1}); add_wall(walls, {cx, gy-1})
-
-        surface.set_tiles(tiles, false)
-        for _, pos in ipairs(walls) do
-            place_wall(surface, pos)
-        end
-
-        local conn_gate = place_gate(surface, conn_side, {cgx, gy})
-        register_gate(cgx, gy, conn_side, conn_gate)
-
-        local far_gate = place_gate(surface, far_side, {fgx, gy})
-        local far_computer = place_computer(surface, fgx, gy, far_side)
-        register_gate(fgx, gy, far_side, far_gate, far_computer)
-
-    else
-        local s = (dir == "north") and 1 or -1
-        local cgy = gy + 3 * s
-        local fgy = gy + 24 * s
-        local cy = gy + 25 * s
-
-        add_tile(tiles, {gx, gy + s}); add_tile(tiles, {gx, gy + 2*s})
-        add_tile(tiles, {gx+1, gy + s}); add_tile(tiles, {gx-1, gy + s})
-        add_tile(tiles, {gx+1, gy + 2*s}); add_tile(tiles, {gx-1, gy + 2*s})
-        add_wall(walls, {gx+1, gy + s}); add_wall(walls, {gx-1, gy + s})
-        add_wall(walls, {gx+1, gy + 2*s}); add_wall(walls, {gx-1, gy + 2*s})
-
-        for x = gx-2, gx+2 do
-            add_tile(tiles, {x, cgy})
-            if x ~= gx then add_wall(walls, {x, cgy}) end
-        end
-
-        local lo = math.min(cgy, fgy)
-        local hi = math.max(cgy, fgy)
-        for y = lo + 1, hi - 1 do
-            for x = gx-1, gx+1 do add_tile(tiles, {x, y}) end
-        end
-
-        for y = lo, hi do
-            add_tile(tiles, {gx+2, y}); add_tile(tiles, {gx-2, y})
-            add_wall(walls, {gx+2, y}); add_wall(walls, {gx-2, y})
-        end
-
-        for x = gx-2, gx+2 do
-            add_tile(tiles, {x, fgy})
-            if x ~= gx then add_wall(walls, {x, fgy}) end
-        end
-
-        add_tile(tiles, {gx, cy}); add_tile(tiles, {gx+1, cy}); add_tile(tiles, {gx-1, cy})
-        add_wall(walls, {gx+1, cy}); add_wall(walls, {gx-1, cy})
-
-        surface.set_tiles(tiles, false)
-        for _, pos in ipairs(walls) do
-            place_wall(surface, pos)
-        end
-
-        local conn_gate = place_gate(surface, conn_side, {gx, cgy})
-        register_gate(gx, cgy, conn_side, conn_gate)
-
-        local far_gate = place_gate(surface, far_side, {gx, fgy})
-        local far_computer = place_computer(surface, gx, fgy, far_side)
-        register_gate(gx, fgy, far_side, far_gate, far_computer)
     end
 end
 
@@ -305,79 +209,85 @@ function M.expand_from_gate(surface, gate_pos, shape)
     local dir = platform_gates.get_gate_dir(key)
     if not dir then return false end
 
-    local box
-    if shape == "hub" then
-        local CX, CY
-        if dir == "east" then CX, CY = gate_pos.x + 9, gate_pos.y
-        elseif dir == "west" then CX, CY = gate_pos.x - 9, gate_pos.y
-        elseif dir == "north" then CX, CY = gate_pos.x, gate_pos.y + 9
-        elseif dir == "south" then CX, CY = gate_pos.x, gate_pos.y - 9
-        else return false end
-        box = {{CX - 7, CY - 7}, {CX + 7, CY + 7}}
-    elseif shape == "corridor" then
-        if dir == "east" then box = {{gate_pos.x + 2, gate_pos.y - 2}, {gate_pos.x + 25, gate_pos.y + 2}}
-        elseif dir == "west" then box = {{gate_pos.x - 25, gate_pos.y - 2}, {gate_pos.x - 2, gate_pos.y + 2}}
-        elseif dir == "north" then box = {{gate_pos.x - 2, gate_pos.y + 2}, {gate_pos.x + 2, gate_pos.y + 25}}
-        elseif dir == "south" then box = {{gate_pos.x - 2, gate_pos.y - 25}, {gate_pos.x + 2, gate_pos.y - 2}}
-        else return false end
-    else
-        return false
-    end
-
-    local entities = surface.find_entities_filtered{area = box}
-    for _, entity in ipairs(entities) do
-        if entity.valid and entity.type ~= "item-on-ground" and entity.name ~= "tile-ghost" then
-            return false, "Not enough space!"
-        end
-    end
-
-    platform_gates.destroy_gate_control(key)
-
     if shape == "hub" then
         local CX, CY, conn_side
         if dir == "east" then CX, CY, conn_side = gate_pos.x + 9, gate_pos.y, "west"
         elseif dir == "west" then CX, CY, conn_side = gate_pos.x - 9, gate_pos.y, "east"
         elseif dir == "north" then CX, CY, conn_side = gate_pos.x, gate_pos.y + 9, "south"
         elseif dir == "south" then CX, CY, conn_side = gate_pos.x, gate_pos.y - 9, "north"
+        else return false end
+
+        local box = {{CX - 7, CY - 7}, {CX + 7, CY + 7}}
+        local entities = surface.find_entities_filtered{area = box}
+        for _, entity in ipairs(entities) do
+            if entity.valid and entity.type ~= "item-on-ground" and entity.name ~= "tile-ghost" then
+                return false, "Not enough space!"
+            end
         end
 
-        build_hub(surface, CX, CY, conn_side)
+        platform_gates.destroy_gate_control(key)
 
-        local conn_gx = CX + (conn_side == "east" and 6 or conn_side == "west" and -6 or 0)
-        local conn_gy = CY + (conn_side == "north" and 6 or conn_side == "south" and -6 or 0)
+        local tiles, walls = hub_shape.get_positions(CX, CY, conn_side, gate_pos)
+        apply_tiles(surface, tiles)
+        apply_walls(surface, walls)
 
-        if side_is_vertical(conn_side) then
-            local s = math.min(gate_pos.x, conn_gx) + 1
-            local e = math.max(gate_pos.x, conn_gx) - 1
-            local tiles = {}
-            local walls = {}
-            for x = s, e do
-                add_tile(tiles, {x, gate_pos.y})
-                add_tile(tiles, {x, gate_pos.y + 1}); add_tile(tiles, {x, gate_pos.y - 1})
-                add_wall(walls, {x, gate_pos.y + 1}); add_wall(walls, {x, gate_pos.y - 1})
+        for _, side in ipairs{"east", "west", "north", "south"} do
+            local gx = CX + (side == "east" and 6 or side == "west" and -6 or 0)
+            local gy = CY + (side == "north" and 6 or side == "south" and -6 or 0)
+            local gate_entity = place_gate(surface, side, {gx, gy})
+            local computer_entity
+            if side ~= conn_side then
+                computer_entity = place_computer(surface, gx, gy, side)
             end
-            surface.set_tiles(tiles, false)
-            for _, pos in ipairs(walls) do
-                place_wall(surface, pos)
-            end
-        else
-            local s = math.min(gate_pos.y, conn_gy) + 1
-            local e = math.max(gate_pos.y, conn_gy) - 1
-            local tiles = {}
-            local walls = {}
-            for y = s, e do
-                add_tile(tiles, {gate_pos.x, y})
-                add_tile(tiles, {gate_pos.x + 1, y}); add_tile(tiles, {gate_pos.x - 1, y})
-                add_wall(walls, {gate_pos.x + 1, y}); add_wall(walls, {gate_pos.x - 1, y})
-            end
-            surface.set_tiles(tiles, false)
-            for _, pos in ipairs(walls) do
-                place_wall(surface, pos)
-            end
+            register_gate(gx, gy, side, gate_entity, computer_entity)
         end
 
     elseif shape == "corridor" then
-        build_corridor(surface, gate_pos, dir)
+        local box = corridor_shape.get_bounding_box(gate_pos, dir)
+        if not box then return false end
+
+        local entities = surface.find_entities_filtered{area = box}
+        for _, entity in ipairs(entities) do
+            if entity.valid and entity.type ~= "item-on-ground" and entity.name ~= "tile-ghost" then
+                return false, "Not enough space!"
+            end
+        end
+
+        platform_gates.destroy_gate_control(key)
+
+        local tiles, walls = corridor_shape.get_positions(gate_pos, dir)
+        apply_tiles(surface, tiles)
+        apply_walls(surface, walls)
+
+        local conn_side, far_side
+        if dir == "east" then conn_side, far_side = "west", "east"
+        elseif dir == "west" then conn_side, far_side = "east", "west"
+        elseif dir == "north" then conn_side, far_side = "south", "north"
+        else conn_side, far_side = "north", "south"
+        end
+
+        if dir == "east" or dir == "west" then
+            local s = (dir == "east") and 1 or -1
+            local cgx = gate_pos.x + 3 * s
+            local fgx = gate_pos.x + 24 * s
+            local conn_gate = place_gate(surface, conn_side, {cgx, gate_pos.y})
+            register_gate(cgx, gate_pos.y, conn_side, conn_gate)
+            local far_gate = place_gate(surface, far_side, {fgx, gate_pos.y})
+            local far_computer = place_computer(surface, fgx, gate_pos.y, far_side)
+            register_gate(fgx, gate_pos.y, far_side, far_gate, far_computer)
+        else
+            local s = (dir == "north") and 1 or -1
+            local cgy = gate_pos.y + 3 * s
+            local fgy = gate_pos.y + 24 * s
+            local conn_gate = place_gate(surface, conn_side, {gate_pos.x, cgy})
+            register_gate(gate_pos.x, cgy, conn_side, conn_gate)
+            local far_gate = place_gate(surface, far_side, {gate_pos.x, fgy})
+            local far_computer = place_computer(surface, gate_pos.x, fgy, far_side)
+            register_gate(gate_pos.x, fgy, far_side, far_gate, far_computer)
+        end
+
+    else
+        return false
     end
 
     return true
