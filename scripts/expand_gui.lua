@@ -20,7 +20,7 @@ function M.create_expand_gui(player)
         direction = "vertical",
     }
     frame.auto_center = true
-    frame.style.size = {200, 200}
+    frame.style.size = {220, 250}
     frame.style.padding = 4
 
     local title_flow = frame.add {
@@ -69,6 +69,23 @@ function M.create_expand_gui(player)
     }
     list.style.horizontally_stretchable = true
     list.style.vertically_stretchable = true
+
+    local buy_row = frame.add {
+        type = "flow",
+        name = "otc_expand_buy_row",
+        direction = "horizontal",
+    }
+    buy_row.style.horizontally_stretchable = true
+    buy_row.style.padding = 4
+
+    local buy_button = buy_row.add {
+        type = "button",
+        name = "otc_expand_buy_button",
+        caption = "Buy",
+        style = "green_button",
+        enabled = false,
+    }
+    buy_button.style.horizontally_stretchable = true
 
     M.rebuild(player)
 
@@ -142,27 +159,11 @@ function M.rebuild(player)
     add_listing("item/assembling-machine-2", "Factory", FACTORY_COST, "factory")
     add_listing("item/iron-ore", "Iron Asteroid", IRON_ASTEROID_COST, "iron_asteroid")
 
-    local spacer = list.add {
-        type = "empty-widget",
-        ignored_by_interaction = true,
-    }
-    spacer.style.vertically_stretchable = true
-
-    local buy_row = list.add {
-        type = "flow",
-        name = "otc_expand_buy_row",
-        direction = "horizontal",
-    }
-    buy_row.style.horizontally_stretchable = true
-
-    local buy_button = buy_row.add {
-        type = "button",
-        name = "otc_expand_buy_button",
-        caption = "Buy",
-        style = "green_button",
-        enabled = false,
-    }
-    buy_button.style.horizontally_stretchable = true
+    local buy_button = frame.otc_expand_buy_row.otc_expand_buy_button
+    if buy_button then
+        buy_button.enabled = false
+        buy_button.caption = "Buy"
+    end
 end
 
 local function get_list(frame)
@@ -172,9 +173,9 @@ local function get_list(frame)
     return inner.otc_expand_list
 end
 
-local function get_buy_button(list)
-    if not list then return nil end
-    local row = list.otc_expand_buy_row
+local function get_buy_button(frame)
+    if not frame then return nil end
+    local row = frame.otc_expand_buy_row
     if not row then return nil end
     return row.otc_expand_buy_button
 end
@@ -182,7 +183,7 @@ end
 local function clear_toggled(list)
     if not list then return end
     for _, child in ipairs(list.children) do
-        if child.type == "button" and child.name ~= "otc_expand_buy_button" then
+        if child.type == "button" or child.type == "sprite-button" then
             child.toggled = false
         end
     end
@@ -193,12 +194,13 @@ function M.handle_selection_change(player, shape)
     if not player_data then return end
 
     M.clear_preview(player_data)
-    local list = get_list(player.gui.screen.otc_expand_frame)
+    local frame = player.gui.screen.otc_expand_frame
+    local list = get_list(frame)
     clear_toggled(list)
 
     if not shape then
         player_data.selected_shape = nil
-        local btn = get_buy_button(list)
+        local btn = get_buy_button(frame)
         if btn then
             btn.enabled = false
             btn.caption = "Buy"
@@ -221,7 +223,7 @@ function M.handle_selection_change(player, shape)
     local surface = game.surfaces[1]
     player_data.preview_renderings = platform.show_preview(surface, player, gate_state.pos, shape)
 
-    local buy_btn = get_buy_button(list)
+    local buy_btn = get_buy_button(frame)
     if buy_btn then
         local cost = shape == "hub" and HUB_COST
             or shape == "corridor" and CORRIDOR_COST
