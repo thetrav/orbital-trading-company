@@ -315,10 +315,10 @@ function M.expand_from_gate(surface, gate_pos, shape)
         else return false end
         box = {{CX - 7, CY - 7}, {CX + 7, CY + 7}}
     elseif shape == "corridor" then
-        if dir == "east" then box = {{gate_pos.x + 1, gate_pos.y - 2}, {gate_pos.x + 25, gate_pos.y + 2}}
-        elseif dir == "west" then box = {{gate_pos.x - 25, gate_pos.y - 2}, {gate_pos.x - 1, gate_pos.y + 2}}
-        elseif dir == "north" then box = {{gate_pos.x - 2, gate_pos.y + 1}, {gate_pos.x + 2, gate_pos.y + 25}}
-        elseif dir == "south" then box = {{gate_pos.x - 2, gate_pos.y - 25}, {gate_pos.x + 2, gate_pos.y - 1}}
+        if dir == "east" then box = {{gate_pos.x + 2, gate_pos.y - 2}, {gate_pos.x + 25, gate_pos.y + 2}}
+        elseif dir == "west" then box = {{gate_pos.x - 25, gate_pos.y - 2}, {gate_pos.x - 2, gate_pos.y + 2}}
+        elseif dir == "north" then box = {{gate_pos.x - 2, gate_pos.y + 2}, {gate_pos.x + 2, gate_pos.y + 25}}
+        elseif dir == "south" then box = {{gate_pos.x - 2, gate_pos.y - 25}, {gate_pos.x + 2, gate_pos.y - 2}}
         else return false end
     else
         return false
