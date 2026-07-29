@@ -4,7 +4,7 @@ local platform = require("scripts.platform")
 
 local M = {}
 
-local EXPANSION_COST = 5000
+local EXPANSION_COST = 1
 
 function M.create_store_gui(player)
     if player.gui.screen.otc_store_frame then
@@ -147,12 +147,15 @@ function M.handle_buy_expansion(player)
     end
 
     local surface = game.surfaces[1]
-    if platform.expand_from_gate(surface, gate_state.pos) then
+    local ok, err = platform.expand_from_gate(surface, gate_state.pos)
+    if ok then
         player_data.credits = player_data.credits - EXPANSION_COST
         gate_state.expanded = true
         market_gui.update_credits_gui(player.index)
         player.print("Platform expanded!")
         M.close(player)
+    elseif err then
+        player.print(err)
     end
 end
 

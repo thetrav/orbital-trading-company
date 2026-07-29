@@ -1,53 +1,111 @@
 local M = {}
 
-local GATE_DIRS = {
-    ["6,0"] = "east",
-    ["-6,0"] = "west",
-    ["0,6"] = "north",
-    ["0,-6"] = "south",
+local AIRLOCKS = {
+    east = {
+        gate = {x = 6, y = 0},
+        computer = {x = 7, y = 0},
+        walls = {{x = 7, y = 1}, {x = 7, y = -1}},
+        gate_dir = defines.direction.north,
+    },
+    west = {
+        gate = {x = -6, y = 0},
+        computer = {x = -7, y = 0},
+        walls = {{x = -7, y = 1}, {x = -7, y = -1}},
+        gate_dir = defines.direction.north,
+    },
+    north = {
+        gate = {x = 0, y = 6},
+        computer = {x = 0, y = 7},
+        walls = {{x = 1, y = 7}, {x = -1, y = 7}},
+        gate_dir = defines.direction.east,
+    },
+    south = {
+        gate = {x = 0, y = -6},
+        computer = {x = 0, y = -7},
+        walls = {{x = 1, y = -7}, {x = -1, y = -7}},
+        gate_dir = defines.direction.east,
+    },
 }
 
-function M.is_gate_position(x, y)
-    return GATE_DIRS[x .. "," .. y] ~= nil
+function M.get_airlock(dir)
+    return AIRLOCKS[dir]
+end
+
+function M.is_airlock_position(x, y)
+    for _, a in pairs(AIRLOCKS) do
+        if a.gate.x == x and a.gate.y == y then return true end
+        if a.computer.x == x and a.computer.y == y then return true end
+        for _, w in ipairs(a.walls) do
+            if w.x == x and w.y == y then return true end
+        end
+    end
+    return false
+end
+
+function M.is_entity_position(x, y)
+    for _, a in pairs(AIRLOCKS) do
+        if a.gate.x == x and a.gate.y == y then return true end
+        if a.computer.x == x and a.computer.y == y then return true end
+    end
+    return false
 end
 
 function M.get_gate_dir(key)
-    return GATE_DIRS[key]
-end
-
-function M.get_gate_positions()
-    local positions = {}
-    for key, _ in pairs(GATE_DIRS) do
-        local x, y = key:match("^(-?[%d]+),(-?[%d]+)$")
-        positions[#positions + 1] = {x = tonumber(x), y = tonumber(y)}
+    if storage.gates and storage.gates[key] then
+        return storage.gates[key].dir
     end
-    return positions
+    for dir, a in pairs(AIRLOCKS) do
+        if a.gate.x .. "," .. a.gate.y == key then return dir end
+    end
+    return nil
 end
 
 function M.init_gates()
-    storage.gates = {}
-    storage.gates_by_id = {}
-    for _, pos in ipairs(M.get_gate_positions()) do
-        local key = pos.x .. "," .. pos.y
-        storage.gates[key] = {
-            pos = pos,
-            key = key,
-            expanded = false,
-        }
+    if not storage.gates then storage.gates = {} end
+    if not storage.gates_by_id then storage.gates_by_id = {} end
+    for dir, a in pairs(AIRLOCKS) do
+        local key = a.gate.x .. "," .. a.gate.y
+        if not storage.gates[key] then
+            storage.gates[key] = {
+                pos = {x = a.gate.x, y = a.gate.y},
+                key = key,
+                dir = dir,
+                expanded = false,
+                gate_unit_number = nil,
+                computer_unit_number = nil,
+            }
+        end
     end
 end
 
 function M.place_gate_controls(surface)
     for _, gate in pairs(storage.gates) do
-        local ctrl = surface.create_entity {
-            name = "otc-gate-control",
-            position = gate.pos,
+        local a = AIRLOCKS[gate.dir]
+        if not a then return end
+
+        local gate_entity = surface.create_entity {
+            name = "gate",
+            position = a.gate,
+            force = "player",
+            direction = a.gate_dir,
+            create_build_effect_smoke = false,
+        }
+        if gate_entity then
+            gate_entity.minable = false
+            gate_entity.destructible = false
+            gate.gate_unit_number = gate_entity.unit_number
+        end
+
+        local computer = surface.create_entity {
+            name = "otc-gate-computer",
+            position = a.computer,
             force = "player",
         }
-        if ctrl then
-            ctrl.minable = false
-            ctrl.destructible = false
-            storage.gates_by_id[ctrl.unit_number] = gate
+        if computer then
+            computer.minable = false
+            computer.destructible = false
+            gate.computer_unit_number = computer.unit_number
+            storage.gates_by_id[computer.unit_number] = gate
         end
     end
 end
@@ -56,9 +114,28 @@ function M.get_gate_by_unit(unit_number)
     return storage.gates_by_id and storage.gates_by_id[unit_number]
 end
 
-function M.destroy_gate_control(surface, pos)
-    local ctrl = surface.find_entity("otc-gate-control", pos)
-    if ctrl then ctrl.destroy() end
+function M.destroy_gate_control(key)
+    local gate = storage.gates and storage.gates[key]
+    if gate and gate.computer_unit_number then
+        local computer = game.get_entity_by_unit_number(gate.computer_unit_number)
+        if computer and computer.valid then
+            computer.destroy()
+        end
+    end
+end
+
+function M.register_events(register, store_gui_ref)
+    register(defines.events.on_gui_opened, function(event)
+        local entity = event.entity
+        if not entity or entity.name ~= "otc-gate-computer" then return end
+        local player = game.get_player(event.player_index)
+        if not player then return end
+        player.opened = nil
+        local gate = M.get_gate_by_unit(entity.unit_number)
+        if gate and not gate.expanded then
+            store_gui_ref.show_for_gate(player, gate)
+        end
+    end)
 end
 
 return M
