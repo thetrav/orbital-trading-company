@@ -1,6 +1,8 @@
 local platform = require("scripts.platform")
+local platform_gates = require("scripts.platform_gates")
 local pricing = require("scripts.pricing")
 local market_gui = require("scripts.market_gui")
+local store_gui = require("scripts.store_gui")
 local buy_chest = require("scripts.buy_chest")
 local sell_chest = require("scripts.sell_chest")
 local supply_demand = require("scripts.supply_demand")
@@ -18,6 +20,7 @@ script.on_init(function()
 
     storage.players = {}
 
+    platform_gates.init_gates()
     supply_demand.init()
 
     local surface = game.surfaces[1]
@@ -43,9 +46,12 @@ script.on_init(function()
         right_bottom = {x = radius, y = radius}
     })
 
+    platform_gates.place_gate_controls(surface)
+
     for _, player in pairs(game.connected_players) do
         player.teleport({0.5, 0.5}, surface)
         market_gui.init_player(player)
+        store_gui.init_player(player)
     end
 
     if remote.interfaces["freeplay"] then
@@ -91,12 +97,18 @@ end)
 script.on_event(defines.events.on_player_created, function(event)
     local player = game.get_player(event.player_index)
     market_gui.init_player(player)
+    store_gui.init_player(player)
 end)
 
 script.on_event(defines.events.on_player_joined_game, function(event)
     local player = game.get_player(event.player_index)
-    if player and not player.gui.screen.otc_credits_frame then
-        market_gui.init_player(player)
+    if player then
+        if not player.gui.screen.otc_credits_frame then
+            market_gui.init_player(player)
+        end
+        if not player.gui.screen.otc_store_frame then
+            store_gui.init_player(player)
+        end
     end
 end)
 
@@ -114,6 +126,25 @@ end)
 script.on_event(defines.events.on_built_entity, function(event)
     buy_chest.register(event.created_entity)
     sell_chest.register(event.created_entity)
+end)
+
+script.on_event(defines.events.on_gui_opened, function(event)
+    local entity = event.entity
+    if not entity or entity.name ~= "otc-gate-control" then
+        return
+    end
+
+    local player = game.get_player(event.player_index)
+    player.opened = nil
+
+    local key = ("%d,%d")
+        :format(math.floor(entity.position.x + 0.5),
+                math.floor(entity.position.y + 0.5))
+
+    local gate = storage.gates[key]
+    if gate and not gate.expanded then
+        store_gui.show_for_gate(player, gate.pos)
+    end
 end)
 
 script.on_event(defines.events.on_entity_died, function(event)
@@ -167,6 +198,18 @@ script.on_event(defines.events.on_gui_click, function(event)
             player_data.market_filter = filter_mode
         end
         market_gui.rebuild_market_list(player)
+    end
+
+    if event.element.name == "otc_store_close" then
+        local player = game.get_player(event.player_index)
+        if not player then return end
+        store_gui.close(player)
+    end
+
+    if event.element.name == "otc_store_buy_expansion" then
+        local player = game.get_player(event.player_index)
+        if not player then return end
+        store_gui.handle_buy_expansion(player)
     end
 end)
 

@@ -82,50 +82,18 @@ This mod targets **Factorio 2.0**. Do not use Factorio 1.1 API patterns.
 
 ### Validating changes
 
-The project uses two tools for static analysis. Run both before submitting changes:
+Run `./validate.sh` from the mod directory to run all checks:
 
-```sh
-# Type checking with Factorio API definitions
-lua-language-server --check control.lua
-lua-language-server --check data.lua
+| # | Check | What it catches |
+|---|-------|-----------------|
+| 1 | `luacheck` | Unused variables, undefined globals, common Lua mistakes |
+| 2 | `lua-language-server` | Type mismatches against Factorio 2.0 API definitions |
+| 3 | `--dump-data` (headless) | Prototype definition errors in `data.lua` |
+| 4 | `--create` (headless) | Save-creation errors (runtime init) |
+| 5 | `--load-game --until-tick 600` (headless) | Runtime errors during the first 10 seconds of gameplay |
 
-# Linting
-luacheck control.lua data.lua
-```
+The script expects a Factorio binary at `~/.local/share/Steam/steamapps/common/Factorio/bin/x64/factorio` and mods at `~/.factorio/mods`. Adjust paths at the top of `validate.sh` if your setup differs.
 
-[lua-language-server](https://github.com/LuaLS/lua-language-server) provides autocompletion and type checking for the full Factorio Runtime and Prototype API. Use your editor's luaLS integration to catch issues as you type.
-
-[luacheck](https://github.com/mpeterv/luacheck) catches common Lua mistakes (undefined variables, unused args, etc). Its config is in `.luacheckrc`.
-
-### Headless smoke test
-
-Factorio's headless mode can load the mod and start a game without a GUI, catching runtime errors before human testing. You need a Factorio installation (headless or full).
-
-Find your Factorio binary:
-
-```sh
-# Steam on Linux (default)
-FACTORIO=~/.local/share/Steam/steamapps/common/Factorio/bin/x64/factorio
-
-# Headless server install
-FACTORIO=/opt/factorio/bin/x64/factorio
-```
-
-Run the smoke tests:
-
-```sh
-MODS=~/.factorio/mods
-
-# 1. Validate prototype loading (data stage only)
-$FACTORIO --mod-directory "$MODS" --dump-data
-
-# 2. Create a save and run for a few ticks
-$FACTORIO --mod-directory "$MODS" --create /tmp/test-save.zip
-$FACTORIO --mod-directory "$MODS" --load-game /tmp/test-save.zip --until-tick 600
-```
-
-`--dump-data` loads all mods, validates prototype definitions, and exits. This catches data-stage errors quickly.
-
-`--until-tick 600` runs the game for 600 ticks (10 seconds of game time) then exits. Check the log at `~/.factorio/factorio-current.log` for errors.
+**All changes must pass `./validate.sh` before being committed.**
 
 For API reference, consult the official docs: https://lua-api.factorio.com/latest/
