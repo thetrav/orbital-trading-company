@@ -254,31 +254,31 @@ function M.show_preview(surface, player, gate_pos, shape)
         tiles = {}
         walls = {}
 
-        for x = cx - 6, cx + 6 do
-            for y = cy - 6, cy + 6 do
+        for x = cx - 7, cx + 7 do
+            for y = cy - 7, cy + 7 do
                 table.insert(tiles, {x, y})
             end
         end
 
-        for y = cy - 6, cy + 6 do
-            if not (dx > 0 and y >= cy - 1 and y <= cy + 1) then
-                table.insert(walls, {cx - 6, y})
+        for y = cy - 7, cy + 7 do
+            if not (dx > 0 and y == cy) then
+                table.insert(walls, {cx - 7, y})
             end
-            if not (dx < 0 and y >= cy - 1 and y <= cy + 1) then
-                table.insert(walls, {cx + 6, y})
+            if not (dx < 0 and y == cy) then
+                table.insert(walls, {cx + 7, y})
             end
         end
-        for x = cx - 6, cx + 6 do
-            if not (dy > 0 and x >= cx - 1 and x <= cx + 1) then
-                table.insert(walls, {x, cy - 6})
+        for x = cx - 7, cx + 7 do
+            if not (dy > 0 and x == cx) then
+                table.insert(walls, {x, cy - 7})
             end
-            if not (dy < 0 and x >= cx - 1 and x <= cx + 1) then
-                table.insert(walls, {x, cy + 6})
+            if not (dy < 0 and x == cx) then
+                table.insert(walls, {x, cy + 7})
             end
         end
 
         if dx ~= 0 then
-            local room_edge_x = dx > 0 and (cx - 6) or (cx + 6)
+            local room_edge_x = dx > 0 and (cx - 7) or (cx + 7)
             local s = math.min(gate_pos.x, room_edge_x) + 1
             local e = math.max(gate_pos.x, room_edge_x) - 1
             for x = s, e do
@@ -289,7 +289,7 @@ function M.show_preview(surface, player, gate_pos, shape)
                 table.insert(walls, {x, gate_pos.y - 1})
             end
         else
-            local room_edge_y = dy > 0 and (cy - 6) or (cy + 6)
+            local room_edge_y = dy > 0 and (cy - 7) or (cy + 7)
             local s = math.min(gate_pos.y, room_edge_y) + 1
             local e = math.max(gate_pos.y, room_edge_y) - 1
             for y = s, e do
@@ -302,8 +302,36 @@ function M.show_preview(surface, player, gate_pos, shape)
         end
 
         local renderings = render_preview(surface, player, tiles, walls)
-        for x = cx - 3, cx + 3 do
-            for y = cy - 3, cy + 3 do
+
+        local gate_x, gate_y, conn_side
+        if dx > 0 then gate_x, gate_y, conn_side = cx - 7, cy, "west"
+        elseif dx < 0 then gate_x, gate_y, conn_side = cx + 7, cy, "east"
+        elseif dy > 0 then gate_x, gate_y, conn_side = cx, cy - 7, "south"
+        else gate_x, gate_y, conn_side = cx, cy + 7, "north"
+        end
+        table.insert(renderings, rendering.draw_sprite{
+            sprite = "entity/gate",
+            tint = WALL_GHOST,
+            target = {position = {gate_x + 0.5, gate_y + 0.5},
+                      rotation = side_is_vertical(conn_side) and 0 or math.pi / 2},
+            surface = surface,
+            players = {player},
+        })
+
+        for x = cx - 5, cx + 5 do
+            for y = cy - 5, cy + 5 do
+                table.insert(renderings, rendering.draw_rectangle{
+                    color = {r = 0.5, g = 0.45, b = 0.4, a = 0.2},
+                    left_top = {x, y + 1},
+                    right_bottom = {x + 1, y},
+                    filled = true,
+                    surface = surface,
+                    players = {player},
+                })
+            end
+        end
+        for x = cx - 4, cx + 4 do
+            for y = cy - 4, cy + 4 do
                 table.insert(renderings, rendering.draw_rectangle{
                     color = {r = 0.45, g = 0.35, b = 0.2, a = 0.2},
                     left_top = {x, y + 1},
@@ -484,10 +512,10 @@ function M.expand_from_gate(surface, gate_pos, shape)
         local cx = gate_pos.x + dx * 9
         local cy = gate_pos.y + dy * 9
 
-        local min_x = dx ~= 0 and (dx > 0 and gate_pos.x + 1 or cx - 6) or cx - 6
-        local max_x = dx ~= 0 and (dx > 0 and cx + 6 or gate_pos.x - 1) or cx + 6
-        local min_y = dy ~= 0 and (dy > 0 and gate_pos.y + 1 or cy - 6) or cy - 6
-        local max_y = dy ~= 0 and (dy > 0 and cy + 6 or gate_pos.y - 1) or cy + 6
+        local min_x = dx ~= 0 and (dx > 0 and gate_pos.x + 1 or cx - 7) or cx - 7
+        local max_x = dx ~= 0 and (dx > 0 and cx + 7 or gate_pos.x - 1) or cx + 7
+        local min_y = dy ~= 0 and (dy > 0 and gate_pos.y + 1 or cy - 7) or cy - 7
+        local max_y = dy ~= 0 and (dy > 0 and cy + 7 or gate_pos.y - 1) or cy + 7
 
         for _, entity in ipairs(surface.find_entities_filtered{area = {{min_x, min_y}, {max_x + 1, max_y + 1}}}) do
             if entity.valid and entity.type ~= "character" then entity.destroy() end
@@ -497,14 +525,14 @@ function M.expand_from_gate(surface, gate_pos, shape)
 
         local tiles = {}
 
-        for x = cx - 6, cx + 6 do
-            for y = cy - 6, cy + 6 do
+        for x = cx - 7, cx + 7 do
+            for y = cy - 7, cy + 7 do
                 table.insert(tiles, {name = "otc-platform", position = {x, y}})
             end
         end
 
         if dx ~= 0 then
-            local room_edge_x = dx > 0 and (cx - 6) or (cx + 6)
+            local room_edge_x = dx > 0 and (cx - 7) or (cx + 7)
             local s = math.min(gate_pos.x, room_edge_x) + 1
             local e = math.max(gate_pos.x, room_edge_x) - 1
             for x = s, e do
@@ -513,7 +541,7 @@ function M.expand_from_gate(surface, gate_pos, shape)
                 end
             end
         else
-            local room_edge_y = dy > 0 and (cy - 6) or (cy + 6)
+            local room_edge_y = dy > 0 and (cy - 7) or (cy + 7)
             local s = math.min(gate_pos.y, room_edge_y) + 1
             local e = math.max(gate_pos.y, room_edge_y) - 1
             for y = s, e do
@@ -523,38 +551,45 @@ function M.expand_from_gate(surface, gate_pos, shape)
             end
         end
 
-        surface.set_tiles(tiles, false)
+        surface.set_tiles(tiles, true)
 
-        local hazard_tiles = {}
-        for x = cx - 3, cx + 3 do
-            for y = cy - 3, cy + 3 do
-                local variant = (x + y) % 2 == 0 and "refined-hazard-concrete-left" or "refined-hazard-concrete-right"
-                table.insert(hazard_tiles, {name = variant, position = {x, y}})
+        local concrete_tiles = {}
+        for x = cx - 5, cx + 5 do
+            for y = cy - 5, cy + 5 do
+                table.insert(concrete_tiles, {name = "concrete", position = {x, y}})
             end
         end
-        surface.set_tiles(hazard_tiles, false)
+        surface.set_tiles(concrete_tiles, true)
+
+        local hazard_tiles = {}
+        for x = cx - 4, cx + 4 do
+            for y = cy - 4, cy + 4 do
+                table.insert(hazard_tiles, {name = "refined-hazard-concrete-left", position = {x, y}})
+            end
+        end
+        surface.set_tiles(hazard_tiles, true)
 
         local wall_positions = {}
 
-        for y = cy - 6, cy + 6 do
-            if not (dx > 0 and y >= cy - 1 and y <= cy + 1) then
-                table.insert(wall_positions, {cx - 6, y})
+        for y = cy - 7, cy + 7 do
+            if not (dx > 0 and y == cy) then
+                table.insert(wall_positions, {cx - 7, y})
             end
-            if not (dx < 0 and y >= cy - 1 and y <= cy + 1) then
-                table.insert(wall_positions, {cx + 6, y})
+            if not (dx < 0 and y == cy) then
+                table.insert(wall_positions, {cx + 7, y})
             end
         end
-        for x = cx - 6, cx + 6 do
-            if not (dy > 0 and x >= cx - 1 and x <= cx + 1) then
-                table.insert(wall_positions, {x, cy - 6})
+        for x = cx - 7, cx + 7 do
+            if not (dy > 0 and x == cx) then
+                table.insert(wall_positions, {x, cy - 7})
             end
-            if not (dy < 0 and x >= cx - 1 and x <= cx + 1) then
-                table.insert(wall_positions, {x, cy + 6})
+            if not (dy < 0 and x == cx) then
+                table.insert(wall_positions, {x, cy + 7})
             end
         end
 
         if dx ~= 0 then
-            local room_edge_x = dx > 0 and (cx - 6) or (cx + 6)
+            local room_edge_x = dx > 0 and (cx - 7) or (cx + 7)
             local s = math.min(gate_pos.x, room_edge_x) + 1
             local e = math.max(gate_pos.x, room_edge_x) - 1
             for x = s, e do
@@ -562,7 +597,7 @@ function M.expand_from_gate(surface, gate_pos, shape)
                 table.insert(wall_positions, {x, gate_pos.y - 1})
             end
         else
-            local room_edge_y = dy > 0 and (cy - 6) or (cy + 6)
+            local room_edge_y = dy > 0 and (cy - 7) or (cy + 7)
             local s = math.min(gate_pos.y, room_edge_y) + 1
             local e = math.max(gate_pos.y, room_edge_y) - 1
             for y = s, e do
@@ -571,7 +606,18 @@ function M.expand_from_gate(surface, gate_pos, shape)
             end
         end
 
+        local conn_side
+        local gate_x, gate_y
+        if dx > 0 then gate_x, gate_y, conn_side = cx - 7, cy, "west"
+        elseif dx < 0 then gate_x, gate_y, conn_side = cx + 7, cy, "east"
+        elseif dy > 0 then gate_x, gate_y, conn_side = cx, cy - 7, "south"
+        else gate_x, gate_y, conn_side = cx, cy + 7, "north"
+        end
+
         apply_walls(surface, wall_positions)
+
+        local gate_entity = place_gate(surface, conn_side, {gate_x, gate_y})
+        register_gate(gate_x, gate_y, conn_side, gate_entity, nil, surface.name)
 
         local silo = surface.create_entity{
             name = "rocket-silo",
@@ -586,20 +632,28 @@ function M.expand_from_gate(surface, gate_pos, shape)
         if not storage.otc_station_index then storage.otc_station_index = 0 end
         storage.otc_station_index = storage.otc_station_index + 1
         local station_name = "otc-station-" .. storage.otc_station_index
+        log("orbital_station: creating surface " .. station_name)
 
         local station_surface = game.create_surface(station_name, {
             peaceful_mode = true,
-            no_enemies_mode = true,
+            width = 0,
+            height = 0,
+            starting_area = 0,
+            terrain_segmentation = 0,
+            water = 0,
+            autoplace_controls = {},
             autoplace_settings = {
-                tile = { settings = {} },
-                decorative = { settings = {} },
-                entity = { settings = {} },
+                tile = { settings = {["out-of-map"] = {}}, treat_missing_as_default = false },
+                decorative = { settings = {}, treat_missing_as_default = false },
+                entity = { settings = {}, treat_missing_as_default = false },
             },
         })
-        station_surface.request_to_generate_chunks({0, 0}, 1)
+        log("orbital_station: surface created, requesting chunk generation")
+        station_surface.request_to_generate_chunks({0, 0}, 4)
         station_surface.force_generate_chunk_requests()
-
+        log("orbital_station: chunk generation done, building platform")
         M.build_platform(station_surface, {left_top = {x = -7, y = -7}, right_bottom = {x = 8, y = 8}})
+        log("orbital_station: platform built")
         platform_gates.init_gates_for_surface(station_surface)
         platform_gates.place_gate_controls(station_surface)
 
@@ -628,6 +682,32 @@ function M.expand_from_gate(surface, gate_pos, shape)
         if silo then
             storage.rocket_silos = storage.rocket_silos or {}
             storage.rocket_silos[silo.unit_number] = station_name
+        end
+
+        local teleporter_pos
+        local teleporter_dir
+        if dx > 0 then
+            teleporter_pos = {cx - 5, cy}
+            teleporter_dir = defines.direction.north
+        elseif dx < 0 then
+            teleporter_pos = {cx + 5, cy}
+            teleporter_dir = defines.direction.south
+        elseif dy > 0 then
+            teleporter_pos = {cx, cy - 5}
+            teleporter_dir = defines.direction.east
+        else
+            teleporter_pos = {cx, cy + 5}
+            teleporter_dir = defines.direction.west
+        end
+        local teleporter = surface.create_entity{
+            name = "otc-teleporter",
+            position = teleporter_pos,
+            direction = teleporter_dir,
+            force = "player",
+        }
+        if teleporter then
+            storage.otc_teleporters = storage.otc_teleporters or {}
+            storage.otc_teleporters[teleporter.unit_number] = station_name
         end
 
     else

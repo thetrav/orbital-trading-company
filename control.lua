@@ -37,7 +37,7 @@ local function build_starting_room(surface)
             end
         end
     end
-    surface.set_tiles(tiles, false)
+    surface.set_tiles(tiles, true)
     surface.destroy_decoratives{area = {{-WR, -WR}, {WR, WR}}}
 
     for x = -WR, WR do
@@ -145,13 +145,28 @@ script.on_event(defines.events.on_gui_opened, function(event)
         local un = entity.unit_number
         if un and storage.rocket_silos and storage.rocket_silos[un] then
             player.opened = nil
-            local station_name = storage.rocket_silos[un]
-            local station = game.surfaces[station_name]
-            if station then
-                player.teleport({0, 0}, station)
-                player.print("Teleported to orbital station.")
-            end
         end
+    end
+end)
+
+script.on_event(defines.events.on_player_driving_changed_state, function(event)
+    local player = game.get_player(event.player_index)
+    if not player then return end
+    local vehicle = player.vehicle
+    if not vehicle then return end
+    if vehicle.name ~= "otc-teleporter" then return end
+
+    local station_name = storage.otc_teleporters and storage.otc_teleporters[vehicle.unit_number]
+    if not station_name then return end
+
+    local station = game.surfaces[station_name]
+    if not station then return end
+
+    player.teleport({0, 0}, station)
+    player.driving = false
+    player.print("Teleported to orbital station.")
+    if vehicle.valid then
+        vehicle.destroy()
     end
 end)
 
@@ -166,6 +181,10 @@ script.on_event(defines.events.on_entity_died, function(event)
     elseif name == "rocket-silo" then
         if storage.rocket_silos then
             storage.rocket_silos[entity.unit_number] = nil
+        end
+    elseif name == "otc-teleporter" then
+        if storage.otc_teleporters then
+            storage.otc_teleporters[entity.unit_number] = nil
         end
     end
 end)
@@ -185,13 +204,6 @@ script.on_event(defines.events.on_player_mined_entity, function(event)
     end
 end)
 
-script.on_event(defines.events.on_chunk_generated, function(event)
-    if event.surface.name == "nauvis" then
-        for _, entity in ipairs(event.surface.find_entities_filtered{area = event.area, force = "enemy"}) do
-            if entity.valid then entity.destroy() end
-        end
-    end
-end)
 
 script.on_event(defines.events.on_gui_click, function(event)
     if event.element.name == "otc_market_search_button" then
