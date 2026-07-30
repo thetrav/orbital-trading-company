@@ -101,6 +101,8 @@ script.on_event(defines.events.on_player_created, function(event)
     if player then
         market_gui.init_player(player)
         expand_gui.init_player(player)
+        player.insert{name = "storage-tank", count = 1}
+        player.insert{name = "pipe-to-ground", count = 2}
     end
 end)
 
@@ -124,6 +126,13 @@ script.on_nth_tick(1, function()
     supply_demand.process_tick()
     for _, player in pairs(game.connected_players) do
         expand_gui.check_proximity(player)
+    end
+    for _, surface in pairs(game.surfaces) do
+        for _, pump in ipairs(surface.find_entities_filtered{name = "otc-water-pump"}) do
+            if pump.valid then
+                pump.fluidbox[1] = {name = "water", amount = 100}
+            end
+        end
     end
 end)
 

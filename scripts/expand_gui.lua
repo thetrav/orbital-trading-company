@@ -8,7 +8,9 @@ local HUB_COST = 1
 local CORRIDOR_COST = 2
 local FACTORY_COST = 4
 local IRON_ASTEROID_COST = 6
+local COPPER_ASTEROID_COST = 6
 local ORBITAL_STATION_COST = 1
+local WATER_CONNECTION_COST = 2
 
 function M.create_expand_gui(player)
     if player.gui.screen.otc_expand_frame then
@@ -164,6 +166,8 @@ function M.rebuild(player)
         add_listing("item/transport-belt", "Corridor", CORRIDOR_COST, "corridor")
         add_listing("item/assembling-machine-2", "Factory", FACTORY_COST, "factory")
         add_listing("item/iron-ore", "Iron Asteroid", IRON_ASTEROID_COST, "iron_asteroid")
+        add_listing("item/copper-ore", "Copper Asteroid", COPPER_ASTEROID_COST, "copper_asteroid")
+        add_listing("item/offshore-pump", "Water Connection", WATER_CONNECTION_COST, "water_connection")
     end
 
     local buy_button = frame.otc_expand_buy_row.otc_expand_buy_button
@@ -236,7 +240,9 @@ function M.handle_selection_change(player, shape)
             or shape == "corridor" and CORRIDOR_COST
             or shape == "factory" and FACTORY_COST
             or shape == "orbital_station" and ORBITAL_STATION_COST
-            or IRON_ASTEROID_COST
+            or shape == "water_connection" and WATER_CONNECTION_COST
+            or shape == "iron_asteroid" and IRON_ASTEROID_COST
+            or COPPER_ASTEROID_COST
         buy_btn.enabled = true
         buy_btn.caption = "Buy (₾" .. utils.format_number(cost) .. ")"
     end
@@ -301,7 +307,9 @@ function M.handle_buy_expansion(player)
         or shape == "corridor" and CORRIDOR_COST
         or shape == "factory" and FACTORY_COST
         or shape == "orbital_station" and ORBITAL_STATION_COST
-        or IRON_ASTEROID_COST
+        or shape == "water_connection" and WATER_CONNECTION_COST
+        or shape == "iron_asteroid" and IRON_ASTEROID_COST
+        or COPPER_ASTEROID_COST
     if cost > 0 and player_data.credits < cost then
         player.print("Not enough credits!")
         return

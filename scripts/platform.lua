@@ -5,6 +5,8 @@ local hub_shape = require("scripts.shapes.hub")
 local corridor_shape = require("scripts.shapes.corridor")
 local factory_shape = require("scripts.shapes.factory")
 local iron_asteroid_shape = require("scripts.shapes.iron_asteroid")
+local copper_asteroid_shape = require("scripts.shapes.copper_asteroid")
+local water_connection_shape = require("scripts.shapes.water_connection")
 local buy_chest = require("scripts.buy_chest")
 local sell_chest = require("scripts.sell_chest")
 
@@ -234,13 +236,34 @@ function M.show_preview(surface, player, gate_pos, shape)
 
         tiles, walls = factory_shape.get_positions(cx, cy, conn_side, gate_pos)
 
-    elseif shape == "iron_asteroid" then
-        local t, resources, awalls = iron_asteroid_shape.get_positions(gate_pos, dir)
-        tiles = {}
-        for _, entry in ipairs(t) do
-            table.insert(tiles, {entry[1], entry[2]})
+    elseif shape == "water_connection" then
+        local cx, cy
+        if dir == "east" then cx, cy = gate_pos.x + 5, gate_pos.y
+        elseif dir == "west" then cx, cy = gate_pos.x - 5, gate_pos.y
+        elseif dir == "north" then cx, cy = gate_pos.x, gate_pos.y + 5
+        elseif dir == "south" then cx, cy = gate_pos.x, gate_pos.y - 5
+        else return {} end
+
+        local conn_side
+        if dir == "east" then conn_side = "west"
+        elseif dir == "west" then conn_side = "east"
+        elseif dir == "north" then conn_side = "south"
+        else conn_side = "north"
         end
-        return render_preview(surface, player, tiles, awalls, resources)
+
+        tiles, walls = water_connection_shape.get_positions(cx, cy, conn_side, gate_pos)
+        local renderings = render_preview(surface, player, tiles, walls)
+
+        local dir_to_rotation = {east = -math.pi / 2, west = math.pi / 2, north = 0, south = math.pi}
+        table.insert(renderings, rendering.draw_sprite{
+            sprite = "entity/offshore-pump",
+            tint = {r = 0.5, g = 0.7, b = 1, a = 0.4},
+            target = {position = {cx + 0.5, cy + 0.5},
+                      rotation = dir_to_rotation[dir] or 0},
+            surface = surface,
+            players = {player},
+        })
+        return renderings
     elseif shape == "orbital_station" then
         local dx, dy
         if dir == "east" then dx, dy = 1, 0
@@ -499,6 +522,79 @@ function M.expand_from_gate(surface, gate_pos, shape)
         if gate_pos2 then
             local asteroid_gate = place_gate(surface, dir, gate_pos2)
             register_gate(gate_pos2.x, gate_pos2.y, dir, asteroid_gate, nil, surface.name)
+        end
+
+    elseif shape == "copper_asteroid" then
+        local box = copper_asteroid_shape.get_bounding_box(gate_pos, dir)
+        if not box then return false end
+
+        local entities = surface.find_entities_filtered{area = box}
+        for _, entity in ipairs(entities) do
+            if entity.valid and entity.type ~= "item-on-ground" and entity.name ~= "tile-ghost" then
+                return false, "Not enough space!"
+            end
+        end
+
+        platform_gates.destroy_gate_control(key)
+
+        local tiles, resources, walls = copper_asteroid_shape.get_positions(gate_pos, dir)
+        apply_custom_tiles(surface, tiles, true)
+        place_resources(surface, resources)
+        apply_walls(surface, walls)
+
+        local gate_pos2 = copper_asteroid_shape.get_gate_pos(gate_pos, dir)
+        if gate_pos2 then
+            local asteroid_gate = place_gate(surface, dir, gate_pos2)
+            register_gate(gate_pos2.x, gate_pos2.y, dir, asteroid_gate, nil, surface.name)
+        end
+
+    elseif shape == "water_connection" then
+        local CX, CY, conn_side
+        if dir == "east" then CX, CY, conn_side = gate_pos.x + 5, gate_pos.y, "west"
+        elseif dir == "west" then CX, CY, conn_side = gate_pos.x - 5, gate_pos.y, "east"
+        elseif dir == "north" then CX, CY, conn_side = gate_pos.x, gate_pos.y + 5, "south"
+        elseif dir == "south" then CX, CY, conn_side = gate_pos.x, gate_pos.y - 5, "north"
+        else return false end
+
+        local min_x, max_x, min_y, max_y
+        if dir == "east" then
+            min_x, max_x = gate_pos.x + 1, CX + 4
+            min_y, max_y = CY - 4, CY + 4
+        elseif dir == "west" then
+            min_x, max_x = CX - 4, gate_pos.x - 1
+            min_y, max_y = CY - 4, CY + 4
+        elseif dir == "north" then
+            min_x, max_x = CX - 4, CX + 4
+            min_y, max_y = gate_pos.y + 1, CY + 4
+        else
+            min_x, max_x = CX - 4, CX + 4
+            min_y, max_y = CY - 4, gate_pos.y - 1
+        end
+
+        for _, entity in ipairs(surface.find_entities_filtered{area = {{min_x, min_y}, {max_x + 1, max_y + 1}}}) do
+            if entity.valid and entity.type ~= "character" then entity.destroy() end
+        end
+
+        platform_gates.destroy_gate_control(key)
+
+        local tiles, walls = water_connection_shape.get_positions(CX, CY, conn_side, gate_pos)
+        apply_tiles(surface, tiles)
+        apply_walls(surface, walls)
+
+        local dir_to_defines = {
+            east = defines.direction.east, west = defines.direction.west,
+            north = defines.direction.south, south = defines.direction.north,
+        }
+        local pump = surface.create_entity{
+            name = "otc-water-pump",
+            position = {CX, CY},
+            direction = dir_to_defines[dir],
+            force = "player",
+            create_build_effect_smoke = false,
+        }
+        if pump then
+            pump.minable = false
+            pump.destructible = false
         end
 
     elseif shape == "orbital_station" then
