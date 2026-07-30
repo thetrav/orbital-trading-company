@@ -194,9 +194,24 @@ script.on_event(defines.events.on_player_joined_game, function(event)
     end
 end)
 
+script.on_event(defines.events.on_research_finished, function()
+    for _, player in pairs(game.connected_players) do
+        local player_data = storage.players and storage.players[player.index]
+        if player_data then
+            player_data.allowed_items = nil
+        end
+        if player.gui.screen.otc_market_frame then
+            market_gui.rebuild_market_list(player)
+        end
+    end
+end)
+
 script.on_configuration_changed(function()
     ensure_company_setup()
 end)
+
+local market_refresh_counter = 0
+local MARKET_REFRESH_INTERVAL = 30
 
 script.on_nth_tick(1, function()
     buy_chest.process()
@@ -209,6 +224,15 @@ script.on_nth_tick(1, function()
         for _, pump in ipairs(surface.find_entities_filtered{name = "otc-water-pump"}) do
             if pump.valid then
                 pump.fluidbox[1] = {name = "water", amount = 100}
+            end
+        end
+    end
+    market_refresh_counter = market_refresh_counter + 1
+    if market_refresh_counter >= MARKET_REFRESH_INTERVAL then
+        market_refresh_counter = 0
+        for _, player in pairs(game.connected_players) do
+            if player.gui.screen.otc_market_frame then
+                market_gui.refresh_market_prices(player)
             end
         end
     end

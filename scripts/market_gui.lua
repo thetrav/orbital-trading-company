@@ -202,6 +202,7 @@ function M.rebuild_market_list(player)
             local effective_price = math.floor(utils.get_price(item.name) * BUY_MULTIPLIER + 0.5)
             row.add {
                 type = "label",
+                name = "otc_price_" .. item.name,
                 caption = "₾" .. utils.format_number(effective_price),
             }
 
@@ -217,10 +218,44 @@ function M.rebuild_market_list(player)
             end
             local trend = row.add {
                 type = "label",
+                name = "otc_trend_" .. item.name,
                 caption = trend_text,
             }
             trend.style.font_color = trend_color
             rendered = rendered + 1
+        end
+    end
+end
+
+function M.refresh_market_prices(player)
+    local frame = player.gui.screen.otc_market_frame
+    if not frame then return end
+    local player_data = storage.players and storage.players[player.index]
+    if not player_data then return end
+    local list = frame.otc_market_inner and frame.otc_market_inner.otc_market_list
+    if not list then return end
+
+    for _, item in pairs(player_data.allowed_items or {}) do
+        local price_label = list["otc_price_" .. item.name]
+        if price_label and price_label.valid then
+            local effective_price = math.floor(utils.get_price(item.name) * BUY_MULTIPLIER + 0.5)
+            price_label.caption = "₾" .. utils.format_number(effective_price)
+        end
+
+        local trend_label = list["otc_trend_" .. item.name]
+        if trend_label and trend_label.valid then
+            local offset = utils.get_price_offset(item.name)
+            local trend_text = ""
+            local trend_color = {r = 0.6, g = 0.6, b = 0.6}
+            if offset > 0.5 then
+                trend_text = "▲"
+                trend_color = {r = 0.2, g = 0.8, b = 0.2}
+            elseif offset < -0.5 then
+                trend_text = "▼"
+                trend_color = {r = 0.8, g = 0.2, b = 0.2}
+            end
+            trend_label.caption = trend_text
+            trend_label.style.font_color = trend_color
         end
     end
 end
