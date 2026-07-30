@@ -5,6 +5,8 @@ local hub_shape = require("scripts.shapes.hub")
 local corridor_shape = require("scripts.shapes.corridor")
 local factory_shape = require("scripts.shapes.factory")
 local iron_asteroid_shape = require("scripts.shapes.iron_asteroid")
+local buy_chest = require("scripts.buy_chest")
+local sell_chest = require("scripts.sell_chest")
 
 local R = 5
 
@@ -44,8 +46,6 @@ function M.build_platform(surface, area)
         for y = area.left_top.y, area.right_bottom.y - 1 do
             if M.is_in_platform(x, y) or is_in_wall_border(x, y) then
                 table.insert(tiles, {name = "otc-platform", position = {x, y}})
-            else
-                table.insert(tiles, {name = "out-of-map", position = {x, y}})
             end
             if is_in_wall_border(x, y) then
                 table.insert(wall_positions, {x, y})
@@ -53,6 +53,10 @@ function M.build_platform(surface, area)
         end
     end
     surface.set_tiles(tiles, false)
+    surface.destroy_decoratives{area = {
+        {area.left_top.x, area.left_top.y},
+        {area.right_bottom.x - 1, area.right_bottom.y - 1}
+    }}
 
     for _, pos in ipairs(wall_positions) do
         place_wall(surface, pos)
@@ -106,13 +110,14 @@ local function place_computer(surface, gx, gy, side)
     end
 end
 
-local function register_gate(gx, gy, side, gate_entity, computer_entity)
-    local gkey = gx .. "," .. gy
+local function register_gate(gx, gy, side, gate_entity, computer_entity, surface_name)
+    local gkey = surface_name .. ":" .. gx .. "," .. gy
     if not storage.gates[gkey] then
         storage.gates[gkey] = {
             pos = {x = gx, y = gy},
             key = gkey,
             dir = side,
+            surface_name = surface_name,
             expanded = false,
             gate_unit_number = gate_entity and gate_entity.unit_number,
             computer_unit_number = computer_entity and computer_entity.unit_number,
@@ -137,12 +142,12 @@ local function apply_walls(surface, positions)
     end
 end
 
-local function apply_custom_tiles(surface, positions)
+local function apply_custom_tiles(surface, positions, correct_tiles)
     local t = {}
     for _, entry in ipairs(positions) do
         table.insert(t, {name = entry[3], position = {entry[1], entry[2]}})
     end
-    surface.set_tiles(t, false)
+    surface.set_tiles(t, correct_tiles or false)
 end
 
 local function place_resources(surface, resources)
@@ -188,7 +193,7 @@ local function render_preview(surface, player, tiles, walls, resources)
 end
 
 function M.show_preview(surface, player, gate_pos, shape)
-    local key = gate_pos.x .. "," .. gate_pos.y
+    local key = surface.name .. ":" .. gate_pos.x .. "," .. gate_pos.y
     local dir = platform_gates.get_gate_dir(key)
     if not dir then return {} end
 
@@ -236,6 +241,88 @@ function M.show_preview(surface, player, gate_pos, shape)
             table.insert(tiles, {entry[1], entry[2]})
         end
         return render_preview(surface, player, tiles, awalls, resources)
+    elseif shape == "orbital_station" then
+        local dx, dy
+        if dir == "east" then dx, dy = 1, 0
+        elseif dir == "west" then dx, dy = -1, 0
+        elseif dir == "north" then dx, dy = 0, 1
+        elseif dir == "south" then dx, dy = 0, -1
+        else return {} end
+
+        local cx = gate_pos.x + dx * 9
+        local cy = gate_pos.y + dy * 9
+        tiles = {}
+        walls = {}
+
+        for x = cx - 6, cx + 6 do
+            for y = cy - 6, cy + 6 do
+                table.insert(tiles, {x, y})
+            end
+        end
+
+        for y = cy - 6, cy + 6 do
+            if not (dx > 0 and y >= cy - 1 and y <= cy + 1) then
+                table.insert(walls, {cx - 6, y})
+            end
+            if not (dx < 0 and y >= cy - 1 and y <= cy + 1) then
+                table.insert(walls, {cx + 6, y})
+            end
+        end
+        for x = cx - 6, cx + 6 do
+            if not (dy > 0 and x >= cx - 1 and x <= cx + 1) then
+                table.insert(walls, {x, cy - 6})
+            end
+            if not (dy < 0 and x >= cx - 1 and x <= cx + 1) then
+                table.insert(walls, {x, cy + 6})
+            end
+        end
+
+        if dx ~= 0 then
+            local room_edge_x = dx > 0 and (cx - 6) or (cx + 6)
+            local s = math.min(gate_pos.x, room_edge_x) + 1
+            local e = math.max(gate_pos.x, room_edge_x) - 1
+            for x = s, e do
+                table.insert(tiles, {x, gate_pos.y})
+                table.insert(tiles, {x, gate_pos.y + 1})
+                table.insert(tiles, {x, gate_pos.y - 1})
+                table.insert(walls, {x, gate_pos.y + 1})
+                table.insert(walls, {x, gate_pos.y - 1})
+            end
+        else
+            local room_edge_y = dy > 0 and (cy - 6) or (cy + 6)
+            local s = math.min(gate_pos.y, room_edge_y) + 1
+            local e = math.max(gate_pos.y, room_edge_y) - 1
+            for y = s, e do
+                table.insert(tiles, {gate_pos.x, y})
+                table.insert(tiles, {gate_pos.x + 1, y})
+                table.insert(tiles, {gate_pos.x - 1, y})
+                table.insert(walls, {gate_pos.x + 1, y})
+                table.insert(walls, {gate_pos.x - 1, y})
+            end
+        end
+
+        local renderings = render_preview(surface, player, tiles, walls)
+        for x = cx - 3, cx + 3 do
+            for y = cy - 3, cy + 3 do
+                table.insert(renderings, rendering.draw_rectangle{
+                    color = {r = 0.45, g = 0.35, b = 0.2, a = 0.2},
+                    left_top = {x, y + 1},
+                    right_bottom = {x + 1, y},
+                    filled = true,
+                    surface = surface,
+                    players = {player},
+                })
+            end
+        end
+        table.insert(renderings, rendering.draw_rectangle{
+            color = {r = 0.9, g = 0.2, b = 0.2, a = 0.25},
+            left_top = {cx - 2.5, cy + 2.5},
+            right_bottom = {cx + 2.5, cy - 2.5},
+            filled = true,
+            surface = surface,
+            players = {player},
+        })
+        return renderings
     else
         return {}
     end
@@ -254,7 +341,7 @@ end
 function M.expand_from_gate(surface, gate_pos, shape)
     shape = shape or "hub"
 
-    local key = gate_pos.x .. "," .. gate_pos.y
+    local key = surface.name .. ":" .. gate_pos.x .. "," .. gate_pos.y
     local dir = platform_gates.get_gate_dir(key)
     if not dir then return false end
 
@@ -288,7 +375,7 @@ function M.expand_from_gate(surface, gate_pos, shape)
             if side ~= conn_side then
                 computer_entity = place_computer(surface, gx, gy, side)
             end
-            register_gate(gx, gy, side, gate_entity, computer_entity)
+            register_gate(gx, gy, side, gate_entity, computer_entity, surface.name)
         end
 
     elseif shape == "corridor" then
@@ -320,19 +407,19 @@ function M.expand_from_gate(surface, gate_pos, shape)
             local cgx = gate_pos.x + 3 * s
             local fgx = gate_pos.x + 24 * s
             local conn_gate = place_gate(surface, conn_side, {cgx, gate_pos.y})
-            register_gate(cgx, gate_pos.y, conn_side, conn_gate)
+            register_gate(cgx, gate_pos.y, conn_side, conn_gate, nil, surface.name)
             local far_gate = place_gate(surface, far_side, {fgx, gate_pos.y})
             local far_computer = place_computer(surface, fgx, gate_pos.y, far_side)
-            register_gate(fgx, gate_pos.y, far_side, far_gate, far_computer)
+            register_gate(fgx, gate_pos.y, far_side, far_gate, far_computer, surface.name)
         else
             local s = (dir == "north") and 1 or -1
             local cgy = gate_pos.y + 3 * s
             local fgy = gate_pos.y + 24 * s
             local conn_gate = place_gate(surface, conn_side, {gate_pos.x, cgy})
-            register_gate(gate_pos.x, cgy, conn_side, conn_gate)
+            register_gate(gate_pos.x, cgy, conn_side, conn_gate, nil, surface.name)
             local far_gate = place_gate(surface, far_side, {gate_pos.x, fgy})
             local far_computer = place_computer(surface, gate_pos.x, fgy, far_side)
-            register_gate(gate_pos.x, fgy, far_side, far_gate, far_computer)
+            register_gate(gate_pos.x, fgy, far_side, far_gate, far_computer, surface.name)
         end
 
     elseif shape == "factory" then
@@ -360,7 +447,7 @@ function M.expand_from_gate(surface, gate_pos, shape)
         local gx = CX + (conn_side == "east" and 16 or conn_side == "west" and -15 or 0)
         local gy = CY + (conn_side == "north" and 16 or conn_side == "south" and -15 or 0)
         local gate_entity = place_gate(surface, conn_side, {gx, gy})
-        register_gate(gx, gy, conn_side, gate_entity)
+        register_gate(gx, gy, conn_side, gate_entity, nil, surface.name)
 
     elseif shape == "iron_asteroid" then
         local box = iron_asteroid_shape.get_bounding_box(gate_pos, dir)
@@ -376,14 +463,171 @@ function M.expand_from_gate(surface, gate_pos, shape)
         platform_gates.destroy_gate_control(key)
 
         local tiles, resources, walls = iron_asteroid_shape.get_positions(gate_pos, dir)
-        apply_custom_tiles(surface, tiles)
+        apply_custom_tiles(surface, tiles, true)
         place_resources(surface, resources)
         apply_walls(surface, walls)
 
         local gate_pos2 = iron_asteroid_shape.get_gate_pos(gate_pos, dir)
         if gate_pos2 then
             local asteroid_gate = place_gate(surface, dir, gate_pos2)
-            register_gate(gate_pos2.x, gate_pos2.y, dir, asteroid_gate)
+            register_gate(gate_pos2.x, gate_pos2.y, dir, asteroid_gate, nil, surface.name)
+        end
+
+    elseif shape == "orbital_station" then
+        local dx, dy
+        if dir == "east" then dx, dy = 1, 0
+        elseif dir == "west" then dx, dy = -1, 0
+        elseif dir == "north" then dx, dy = 0, 1
+        elseif dir == "south" then dx, dy = 0, -1
+        else return false end
+
+        local cx = gate_pos.x + dx * 9
+        local cy = gate_pos.y + dy * 9
+
+        local min_x = dx ~= 0 and (dx > 0 and gate_pos.x + 1 or cx - 6) or cx - 6
+        local max_x = dx ~= 0 and (dx > 0 and cx + 6 or gate_pos.x - 1) or cx + 6
+        local min_y = dy ~= 0 and (dy > 0 and gate_pos.y + 1 or cy - 6) or cy - 6
+        local max_y = dy ~= 0 and (dy > 0 and cy + 6 or gate_pos.y - 1) or cy + 6
+
+        for _, entity in ipairs(surface.find_entities_filtered{area = {{min_x, min_y}, {max_x + 1, max_y + 1}}}) do
+            if entity.valid and entity.type ~= "character" then entity.destroy() end
+        end
+
+        platform_gates.destroy_gate_control(key)
+
+        local tiles = {}
+
+        for x = cx - 6, cx + 6 do
+            for y = cy - 6, cy + 6 do
+                table.insert(tiles, {name = "otc-platform", position = {x, y}})
+            end
+        end
+
+        if dx ~= 0 then
+            local room_edge_x = dx > 0 and (cx - 6) or (cx + 6)
+            local s = math.min(gate_pos.x, room_edge_x) + 1
+            local e = math.max(gate_pos.x, room_edge_x) - 1
+            for x = s, e do
+                for y = gate_pos.y - 1, gate_pos.y + 1 do
+                    table.insert(tiles, {name = "otc-platform", position = {x, y}})
+                end
+            end
+        else
+            local room_edge_y = dy > 0 and (cy - 6) or (cy + 6)
+            local s = math.min(gate_pos.y, room_edge_y) + 1
+            local e = math.max(gate_pos.y, room_edge_y) - 1
+            for y = s, e do
+                for x = gate_pos.x - 1, gate_pos.x + 1 do
+                    table.insert(tiles, {name = "otc-platform", position = {x, y}})
+                end
+            end
+        end
+
+        surface.set_tiles(tiles, false)
+
+        local hazard_tiles = {}
+        for x = cx - 3, cx + 3 do
+            for y = cy - 3, cy + 3 do
+                local variant = (x + y) % 2 == 0 and "refined-hazard-concrete-left" or "refined-hazard-concrete-right"
+                table.insert(hazard_tiles, {name = variant, position = {x, y}})
+            end
+        end
+        surface.set_tiles(hazard_tiles, false)
+
+        local wall_positions = {}
+
+        for y = cy - 6, cy + 6 do
+            if not (dx > 0 and y >= cy - 1 and y <= cy + 1) then
+                table.insert(wall_positions, {cx - 6, y})
+            end
+            if not (dx < 0 and y >= cy - 1 and y <= cy + 1) then
+                table.insert(wall_positions, {cx + 6, y})
+            end
+        end
+        for x = cx - 6, cx + 6 do
+            if not (dy > 0 and x >= cx - 1 and x <= cx + 1) then
+                table.insert(wall_positions, {x, cy - 6})
+            end
+            if not (dy < 0 and x >= cx - 1 and x <= cx + 1) then
+                table.insert(wall_positions, {x, cy + 6})
+            end
+        end
+
+        if dx ~= 0 then
+            local room_edge_x = dx > 0 and (cx - 6) or (cx + 6)
+            local s = math.min(gate_pos.x, room_edge_x) + 1
+            local e = math.max(gate_pos.x, room_edge_x) - 1
+            for x = s, e do
+                table.insert(wall_positions, {x, gate_pos.y + 1})
+                table.insert(wall_positions, {x, gate_pos.y - 1})
+            end
+        else
+            local room_edge_y = dy > 0 and (cy - 6) or (cy + 6)
+            local s = math.min(gate_pos.y, room_edge_y) + 1
+            local e = math.max(gate_pos.y, room_edge_y) - 1
+            for y = s, e do
+                table.insert(wall_positions, {gate_pos.x + 1, y})
+                table.insert(wall_positions, {gate_pos.x - 1, y})
+            end
+        end
+
+        apply_walls(surface, wall_positions)
+
+        local silo = surface.create_entity{
+            name = "rocket-silo",
+            position = {cx, cy},
+            force = "player",
+        }
+        if silo then
+            silo.minable = false
+            silo.destructible = false
+        end
+
+        if not storage.otc_station_index then storage.otc_station_index = 0 end
+        storage.otc_station_index = storage.otc_station_index + 1
+        local station_name = "otc-station-" .. storage.otc_station_index
+
+        local station_surface = game.create_surface(station_name, {
+            peaceful_mode = true,
+            no_enemies_mode = true,
+            autoplace_settings = {
+                tile = { settings = {} },
+                decorative = { settings = {} },
+                entity = { settings = {} },
+            },
+        })
+        station_surface.request_to_generate_chunks({0, 0}, 1)
+        station_surface.force_generate_chunk_requests()
+
+        M.build_platform(station_surface, {left_top = {x = -7, y = -7}, right_bottom = {x = 8, y = 8}})
+        platform_gates.init_gates_for_surface(station_surface)
+        platform_gates.place_gate_controls(station_surface)
+
+        local buy = station_surface.create_entity{
+            name = "otc-buy-chest",
+            position = {-2, -2},
+            force = "player",
+        }
+        if buy then
+            buy.minable = false
+            buy.destructible = false
+            buy_chest.register(buy)
+        end
+
+        local sell = station_surface.create_entity{
+            name = "otc-sell-chest",
+            position = {2, -2},
+            force = "player",
+        }
+        if sell then
+            sell.minable = false
+            sell.destructible = false
+            sell_chest.register(sell)
+        end
+
+        if silo then
+            storage.rocket_silos = storage.rocket_silos or {}
+            storage.rocket_silos[silo.unit_number] = station_name
         end
 
     else

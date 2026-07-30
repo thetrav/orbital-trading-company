@@ -1,4 +1,3 @@
-local platform = require("scripts.platform")
 local platform_gates = require("scripts.platform_gates")
 local pricing = require("scripts.pricing")
 local market_gui = require("scripts.market_gui")
@@ -9,8 +8,59 @@ local supply_demand = require("scripts.supply_demand")
 
 local BUY_CHEST_NAME = "otc-buy-chest"
 local SELL_CHEST_NAME = "otc-sell-chest"
-local BUY_CHEST_POSITION = { x = -3, y = 0 }
-local SELL_CHEST_POSITION = { x = 2, y = 0 }
+
+local function clear_enemies()
+    local nauvis = game.surfaces["nauvis"]
+    if nauvis then
+        for _, entity in ipairs(nauvis.find_entities_filtered{force = "enemy"}) do
+            if entity.valid then entity.destroy() end
+        end
+    end
+end
+
+local function build_starting_room(surface)
+    local R = 5
+    local WR = R + 1
+
+    local entities = surface.find_entities_filtered{area = {{-WR, -WR}, {WR, WR}}}
+    for _, entity in ipairs(entities) do
+        if entity.valid then
+            entity.destroy()
+        end
+    end
+
+    local tiles = {}
+    for x = -WR, WR do
+        for y = -WR, WR do
+            if (math.abs(x) <= R and math.abs(y) <= R) or math.abs(x) == WR or math.abs(y) == WR then
+                table.insert(tiles, {name = "otc-platform", position = {x, y}})
+            end
+        end
+    end
+    surface.set_tiles(tiles, false)
+    surface.destroy_decoratives{area = {{-WR, -WR}, {WR, WR}}}
+
+    for x = -WR, WR do
+        for y = -WR, WR do
+            if math.abs(x) == WR or math.abs(y) == WR then
+                if not platform_gates.is_entity_position(x, y) then
+                    local wall = surface.create_entity{
+                        name = "otc-platform-wall",
+                        position = {x, y},
+                        force = "player",
+                    }
+                    if wall then
+                        wall.minable = false
+                        wall.destructible = false
+                    end
+                end
+            end
+        end
+    end
+
+    platform_gates.init_gates_for_surface(surface)
+    platform_gates.place_gate_controls(surface)
+end
 
 script.on_init(function()
     if remote.interfaces["freeplay"] then
@@ -20,71 +70,23 @@ script.on_init(function()
 
     storage.players = {}
 
-    platform_gates.init_gates()
     supply_demand.init()
 
-    local surface = game.surfaces[1]
+    clear_enemies()
     game.map_settings.pollution.enabled = false
     game.map_settings.enemy_expansion.enabled = false
 
-    local mgs = surface.map_gen_settings
-    mgs.width = 0
-    mgs.height = 0
-    mgs.starting_area = 0
-    mgs.terrain_segmentation = 0
-    mgs.water = 0
-    mgs.cliff_settings.cliff_elevation_interval = 0
-    mgs.cliff_settings.richness = 0
-    mgs.peaceful_mode = true
-    mgs.no_enemies_mode = true
-    mgs.autoplace_controls = {}
-    surface.map_gen_settings = mgs
-
-    local radius = 160
-    platform.build_platform(surface, {
-        left_top = {x = -radius, y = -radius},
-        right_bottom = {x = radius, y = radius}
-    })
-
-    platform_gates.place_gate_controls(surface)
-
-    for _, player in pairs(game.connected_players) do
-        player.teleport({0.5, 0.5}, surface)
-        market_gui.init_player(player)
-        expand_gui.init_player(player)
+    local nauvis = game.surfaces["nauvis"]
+    if nauvis then
+        build_starting_room(nauvis)
     end
 
     if remote.interfaces["freeplay"] then
         remote.call("freeplay", "set_created_items", {
             ["iron-plate"] = 8,
-            ["pistol"] = 1,
-            ["firearm-magazine"] = 10,
             ["stone-furnace"] = 1,
             ["burner-inserter"] = 2,
-            ["constant-combinator"] = 1,
         })
-    end
-
-    local chest = surface.create_entity {
-        name = BUY_CHEST_NAME,
-        position = BUY_CHEST_POSITION,
-        force = "player",
-    }
-    if chest then
-        chest.minable = false
-        chest.destructible = false
-        buy_chest.register(chest)
-    end
-
-    local sell_chest_entity = surface.create_entity {
-        name = SELL_CHEST_NAME,
-        position = SELL_CHEST_POSITION,
-        force = "player",
-    }
-    if sell_chest_entity then
-        sell_chest_entity.minable = false
-        sell_chest_entity.destructible = false
-        sell_chest.register(sell_chest_entity)
     end
 
     storage.prices = pricing.calculate()
@@ -96,8 +98,10 @@ end)
 
 script.on_event(defines.events.on_player_created, function(event)
     local player = game.get_player(event.player_index)
-    market_gui.init_player(player)
-    expand_gui.init_player(player)
+    if player then
+        market_gui.init_player(player)
+        expand_gui.init_player(player)
+    end
 end)
 
 script.on_event(defines.events.on_player_joined_game, function(event)
@@ -112,10 +116,7 @@ script.on_event(defines.events.on_player_joined_game, function(event)
     end
 end)
 
-script.on_event(defines.events.on_chunk_generated, function(event)
-    if event.surface.index ~= 1 then return end
-    platform.build_platform(event.surface, event.area)
-end)
+script.on_configuration_changed(function() end)
 
 script.on_nth_tick(1, function()
     buy_chest.process()
@@ -131,21 +132,64 @@ script.on_event(defines.events.on_built_entity, function(event)
     sell_chest.register(event.created_entity)
 end)
 
-platform_gates.register_events(script.on_event, expand_gui)
+script.on_event(defines.events.on_gui_opened, function(event)
+    local entity = event.entity
+    local player = game.get_player(event.player_index)
+    if not entity or not entity.valid or not player then return end
+
+    if platform_gates.try_open_gate_computer(entity, player, expand_gui) then
+        return
+    end
+
+    if entity.name == "rocket-silo" then
+        local un = entity.unit_number
+        if un and storage.rocket_silos and storage.rocket_silos[un] then
+            player.opened = nil
+            local station_name = storage.rocket_silos[un]
+            local station = game.surfaces[station_name]
+            if station then
+                player.teleport({0, 0}, station)
+                player.print("Teleported to orbital station.")
+            end
+        end
+    end
+end)
 
 script.on_event(defines.events.on_entity_died, function(event)
-    if event.entity.name == BUY_CHEST_NAME then
-        buy_chest.unregister(event.entity.unit_number)
-    elseif event.entity.name == SELL_CHEST_NAME then
-        sell_chest.unregister(event.entity.unit_number)
+    local entity = event.entity
+    if not entity or not entity.valid then return end
+    local name = entity.name
+    if name == BUY_CHEST_NAME then
+        buy_chest.unregister(entity.unit_number)
+    elseif name == SELL_CHEST_NAME then
+        sell_chest.unregister(entity.unit_number)
+    elseif name == "rocket-silo" then
+        if storage.rocket_silos then
+            storage.rocket_silos[entity.unit_number] = nil
+        end
     end
 end)
 
 script.on_event(defines.events.on_player_mined_entity, function(event)
-    if event.entity.name == BUY_CHEST_NAME then
-        buy_chest.unregister(event.entity.unit_number)
-    elseif event.entity.name == SELL_CHEST_NAME then
-        sell_chest.unregister(event.entity.unit_number)
+    local entity = event.entity
+    if not entity or not entity.valid then return end
+    local name = entity.name
+    if name == BUY_CHEST_NAME then
+        buy_chest.unregister(entity.unit_number)
+    elseif name == SELL_CHEST_NAME then
+        sell_chest.unregister(entity.unit_number)
+    elseif name == "rocket-silo" then
+        if storage.rocket_silos then
+            storage.rocket_silos[entity.unit_number] = nil
+        end
+    end
+end)
+
+script.on_event(defines.events.on_chunk_generated, function(event)
+    if event.surface.name == "nauvis" then
+        for _, entity in ipairs(event.surface.find_entities_filtered{area = event.area, force = "enemy"}) do
+            if entity.valid then entity.destroy() end
+        end
     end
 end)
 
@@ -222,7 +266,6 @@ script.on_event(defines.events.on_gui_checked_state_changed, function(event)
         end
         market_gui.rebuild_market_list(player)
     end
-
 end)
 
 script.on_event(defines.events.on_gui_text_changed, function(event)

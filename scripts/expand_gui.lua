@@ -8,6 +8,7 @@ local HUB_COST = 1
 local CORRIDOR_COST = 2
 local FACTORY_COST = 4
 local IRON_ASTEROID_COST = 6
+local ORBITAL_STATION_COST = 1
 
 function M.create_expand_gui(player)
     if player.gui.screen.otc_expand_frame then
@@ -154,10 +155,16 @@ function M.rebuild(player)
         cost_label.style.horizontal_align = "right"
     end
 
+    local is_nauvis = gate_state.surface_name == "nauvis"
+
     add_listing("item/gate", "Hub", HUB_COST, "hub")
-    add_listing("item/transport-belt", "Corridor", CORRIDOR_COST, "corridor")
-    add_listing("item/assembling-machine-2", "Factory", FACTORY_COST, "factory")
-    add_listing("item/iron-ore", "Iron Asteroid", IRON_ASTEROID_COST, "iron_asteroid")
+    if is_nauvis then
+        add_listing("item/rocket-silo", "Orbital station", ORBITAL_STATION_COST, "orbital_station")
+    else
+        add_listing("item/transport-belt", "Corridor", CORRIDOR_COST, "corridor")
+        add_listing("item/assembling-machine-2", "Factory", FACTORY_COST, "factory")
+        add_listing("item/iron-ore", "Iron Asteroid", IRON_ASTEROID_COST, "iron_asteroid")
+    end
 
     local buy_button = frame.otc_expand_buy_row.otc_expand_buy_button
     if buy_button then
@@ -220,7 +227,7 @@ function M.handle_selection_change(player, shape)
     local gate_state = storage.gates and storage.gates[gate_key]
     if not gate_state then return end
 
-    local surface = game.surfaces[1]
+    local surface = game.surfaces[gate_state.surface_name]
     player_data.preview_renderings = platform.show_preview(surface, player, gate_state.pos, shape)
 
     local buy_btn = get_buy_button(frame)
@@ -228,6 +235,7 @@ function M.handle_selection_change(player, shape)
         local cost = shape == "hub" and HUB_COST
             or shape == "corridor" and CORRIDOR_COST
             or shape == "factory" and FACTORY_COST
+            or shape == "orbital_station" and ORBITAL_STATION_COST
             or IRON_ASTEROID_COST
         buy_btn.enabled = true
         buy_btn.caption = "Buy (₾" .. utils.format_number(cost) .. ")"
@@ -292,13 +300,14 @@ function M.handle_buy_expansion(player)
     local cost = shape == "hub" and HUB_COST
         or shape == "corridor" and CORRIDOR_COST
         or shape == "factory" and FACTORY_COST
+        or shape == "orbital_station" and ORBITAL_STATION_COST
         or IRON_ASTEROID_COST
-    if player_data.credits < cost then
+    if cost > 0 and player_data.credits < cost then
         player.print("Not enough credits!")
         return
     end
 
-    local surface = game.surfaces[1]
+    local surface = game.surfaces[gate_state.surface_name]
     local ok, err = platform.expand_from_gate(surface, gate_state.pos, shape)
     if ok then
         player_data.credits = player_data.credits - cost
