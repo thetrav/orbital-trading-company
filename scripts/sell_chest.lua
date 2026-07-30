@@ -2,6 +2,7 @@ local utils = require("scripts.utils")
 local item_filter = require("scripts.item_filter")
 local market_gui = require("scripts.market_gui")
 local supply_demand = require("scripts.supply_demand")
+local trading_history = require("scripts.trading_history")
 
 local M = {}
 
@@ -54,6 +55,7 @@ function M.process()
                             local sell_value = math.floor(removed * price * SELL_MULTIPLIER + 0.5)
                             company.credits = company.credits + sell_value
                             supply_demand.record_sell(item.name, removed)
+                            trading_history.record_sell(data.force_name, item.name, removed, price)
                             market_gui.update_all_forces_credits()
                         end
                     end

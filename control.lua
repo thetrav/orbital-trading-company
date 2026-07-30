@@ -6,6 +6,8 @@ local buy_chest = require("scripts.buy_chest")
 local sell_chest = require("scripts.sell_chest")
 local supply_demand = require("scripts.supply_demand")
 local company_gui = require("scripts.company_gui")
+local trading_history = require("scripts.trading_history")
+local trading_gui = require("scripts.trading_gui")
 
 local BUY_CHEST_NAME = "otc-buy-chest"
 local SELL_CHEST_NAME = "otc-sell-chest"
@@ -149,6 +151,7 @@ script.on_init(function()
     storage.players = {}
 
     supply_demand.init()
+    trading_history.init()
     ensure_company_setup()
 
     clear_enemies()
@@ -190,7 +193,19 @@ end)
 script.on_event(defines.events.on_player_joined_game, function(event)
     local player = game.get_player(event.player_index)
     if player then
-        company_gui.init_or_restore(player)
+        player.set_shortcut_toggled("otc-trading", false)
+    end
+end)
+
+script.on_event(defines.events.on_lua_shortcut, function(event)
+    if event.prototype_name == "otc-trading" then
+        local player = game.get_player(event.player_index)
+        if not player then return end
+        if player.gui.screen.otc_trading_frame then
+            trading_gui.close(player)
+        else
+            trading_gui.create_trading_gui(player)
+        end
     end
 end)
 
@@ -204,6 +219,11 @@ script.on_event(defines.events.on_research_finished, function()
             market_gui.rebuild_market_list(player)
         end
     end
+end)
+
+script.on_nth_tick(60, function()
+    trading_history.advance_second()
+    trading_gui.refresh()
 end)
 
 script.on_configuration_changed(function()
@@ -412,7 +432,26 @@ script.on_event(defines.events.on_gui_click, function(event)
         local player = game.get_player(event.player_index)
         if not player then return end
         expand_gui.close(player)
+        return
     end
+
+if event.element.name == "otc_trading_close" then
+        local player = game.get_player(event.player_index)
+        if player then trading_gui.close(player) end
+        return
+    end
+
+    if event.element.name == "otc_trading_force_dropdown" then
+        local player = game.get_player(event.player_index)
+        if not player then return end
+        local element = event.element
+        local force_name = element.items[element.selected_index]
+        if force_name then
+            trading_gui.handle_force_change(player, force_name)
+        end
+        return
+    end
+
 
     if event.element.name == "otc_expand_buy_button" then
         local player = game.get_player(event.player_index)
@@ -422,12 +461,13 @@ script.on_event(defines.events.on_gui_click, function(event)
 end)
 
 script.on_event(defines.events.on_gui_checked_state_changed, function(event)
+    local player = game.get_player(event.player_index)
+    if not player then return end
+    local player_data = storage.players and storage.players[player.index]
+    if not player_data then return end
+
     local item_name = string.match(event.element.name, "^otc_pin_(.+)$")
     if item_name then
-        local player = game.get_player(event.player_index)
-        if not player then return end
-        local player_data = storage.players and storage.players[player.index]
-        if not player_data then return end
         player_data.pinned_items = player_data.pinned_items or {}
         if event.element.state then
             player_data.pinned_items[item_name] = true
@@ -435,14 +475,17 @@ script.on_event(defines.events.on_gui_checked_state_changed, function(event)
             player_data.pinned_items[item_name] = nil
         end
         market_gui.rebuild_market_list(player)
+        return
     end
+
 end)
 
 script.on_event(defines.events.on_gui_text_changed, function(event)
+    local player = game.get_player(event.player_index)
+    if not player then return end
     if event.element.name == "otc_market_search" then
-        local player = game.get_player(event.player_index)
-        if player then
-            market_gui.rebuild_market_list(player)
-        end
+        market_gui.rebuild_market_list(player)
+    elseif event.element.name == "otc_trading_search" then
+        trading_gui.handle_search(player, event.element.text)
     end
 end)

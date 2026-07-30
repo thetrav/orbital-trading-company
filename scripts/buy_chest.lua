@@ -2,6 +2,7 @@ local utils = require("scripts.utils")
 local item_filter = require("scripts.item_filter")
 local market_gui = require("scripts.market_gui")
 local supply_demand = require("scripts.supply_demand")
+local trading_history = require("scripts.trading_history")
 
 local M = {}
 
@@ -87,6 +88,7 @@ function M.process()
                                 if inserted > 0 then
                                     company.credits = company.credits - inserted * buy_price
                                     supply_demand.record_buy(item_name, inserted)
+                                    trading_history.record_buy(data.force_name, item_name, inserted, buy_price)
                                     market_gui.update_all_forces_credits()
                                 end
                             end
