@@ -21,3 +21,8 @@ if nauvis and nauvis.map_gen_settings then
         enemy.richness = 0
     end
 end
+
+local silo = data.raw["rocket-silo"]["rocket-silo"]
+if silo and silo.energy_source then
+    silo.energy_source = { type = "void" }
+end

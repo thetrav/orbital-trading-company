@@ -157,16 +157,24 @@ script.on_event(defines.events.on_player_driving_changed_state, function(event)
     if vehicle.name ~= "otc-teleporter" then return end
 
     local station_name = storage.otc_teleporters and storage.otc_teleporters[vehicle.unit_number]
-    if not station_name then return end
+    if station_name then
+        local station = game.surfaces[station_name]
+        if station then
+            player.teleport({0, 6}, station)
+            player.driving = false
+            player.print("Teleported to orbital station.")
+        end
+        return
+    end
 
-    local station = game.surfaces[station_name]
-    if not station then return end
-
-    player.teleport({0, 0}, station)
-    player.driving = false
-    player.print("Teleported to orbital station.")
-    if vehicle.valid then
-        vehicle.destroy()
+    local return_data = storage.otc_return_teleporters and storage.otc_return_teleporters[vehicle.unit_number]
+    if return_data then
+        local surface = game.surfaces[return_data.surface]
+        if surface then
+            player.teleport(return_data.position, surface)
+            player.driving = false
+            player.print("Teleported back to Nauvis.")
+        end
     end
 end)
 
@@ -186,6 +194,9 @@ script.on_event(defines.events.on_entity_died, function(event)
         if storage.otc_teleporters then
             storage.otc_teleporters[entity.unit_number] = nil
         end
+        if storage.otc_return_teleporters then
+            storage.otc_return_teleporters[entity.unit_number] = nil
+        end
     end
 end)
 
@@ -200,6 +211,13 @@ script.on_event(defines.events.on_player_mined_entity, function(event)
     elseif name == "rocket-silo" then
         if storage.rocket_silos then
             storage.rocket_silos[entity.unit_number] = nil
+        end
+    elseif name == "otc-teleporter" then
+        if storage.otc_teleporters then
+            storage.otc_teleporters[entity.unit_number] = nil
+        end
+        if storage.otc_return_teleporters then
+            storage.otc_return_teleporters[entity.unit_number] = nil
         end
     end
 end)

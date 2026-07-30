@@ -652,14 +652,86 @@ function M.expand_from_gate(surface, gate_pos, shape)
         station_surface.request_to_generate_chunks({0, 0}, 4)
         station_surface.force_generate_chunk_requests()
         log("orbital_station: chunk generation done, building platform")
-        M.build_platform(station_surface, {left_top = {x = -7, y = -7}, right_bottom = {x = 8, y = 8}})
-        log("orbital_station: platform built")
-        platform_gates.init_gates_for_surface(station_surface)
-        platform_gates.place_gate_controls(station_surface)
+        local station_tiles = {}
+        for x = -7, 7 do
+            for y = -7, 7 do
+                table.insert(station_tiles, {name = "otc-platform", position = {x, y}})
+            end
+        end
+        station_surface.set_tiles(station_tiles, false)
+
+        local station_ext_tiles = {}
+        for x = -1, 1 do
+            table.insert(station_ext_tiles, {name = "refined-concrete", position = {x, 8}})
+        end
+        station_surface.set_tiles(station_ext_tiles, false)
+
+        local station_concrete = {}
+        for x = -5, 5 do
+            for y = -5, 5 do
+                table.insert(station_concrete, {name = "concrete", position = {x, y}})
+            end
+        end
+        station_surface.set_tiles(station_concrete, false)
+
+        local station_hazard = {}
+        for x = -4, 4 do
+            for y = -4, 4 do
+                table.insert(station_hazard, {name = "refined-hazard-concrete-left", position = {x, y}})
+            end
+        end
+        station_surface.set_tiles(station_hazard, false)
+
+        for y = -7, 7 do
+            place_wall(station_surface, {-7, y})
+            place_wall(station_surface, {7, y})
+        end
+        for x = -7, 7 do
+            place_wall(station_surface, {x, -7})
+            if x ~= 0 then
+                place_wall(station_surface, {x, 7})
+            end
+        end
+
+        for _, pos in ipairs{{-7, 0}, {7, 0}, {0, -7}} do
+            local existing = station_surface.find_entity("otc-platform-wall", pos)
+            if not existing then
+                local w = station_surface.create_entity{name = "otc-platform-wall", position = pos, force = "player"}
+                if w then w.minable = false; w.destructible = false end
+            end
+        end
+
+        for _, pos in ipairs{{-1, 8}, {1, 8}} do
+            local existing = station_surface.find_entity("otc-platform-wall", pos)
+            if not existing then
+                local w = station_surface.create_entity{name = "otc-platform-wall", position = pos, force = "player"}
+                if w then w.minable = false; w.destructible = false end
+            end
+        end
+
+        local station_gate = place_gate(station_surface, "south", {0, 7})
+        local station_computer = try_create(station_surface.create_entity{
+            name = "otc-gate-computer",
+            position = {0, 8},
+            force = "player",
+        })
+        register_gate(0, 7, "north", station_gate, station_computer, station_name)
+
+        local station_silo = station_surface.create_entity{
+            name = "rocket-silo",
+            position = {0, 0},
+            force = "player",
+        }
+        if station_silo then
+            station_silo.minable = false
+            station_silo.destructible = false
+            storage.rocket_silos = storage.rocket_silos or {}
+            storage.rocket_silos[station_silo.unit_number] = station_name
+        end
 
         local buy = station_surface.create_entity{
             name = "otc-buy-chest",
-            position = {-2, -2},
+            position = {-6, 6},
             force = "player",
         }
         if buy then
@@ -668,9 +740,25 @@ function M.expand_from_gate(surface, gate_pos, shape)
             buy_chest.register(buy)
         end
 
+        local combinator = station_surface.create_entity{
+            name = "constant-combinator",
+            position = {-6, 5},
+            force = "player",
+        }
+        if combinator and buy then
+            combinator.minable = false
+            combinator.destructible = false
+            local cw = combinator.get_wire_connector(defines.wire_connector_id.circuit_green, false)
+            local bw = buy.get_wire_connector(defines.wire_connector_id.circuit_green, false)
+            if cw and bw then
+                ---@diagnostic disable-next-line: undefined-field
+                cw.connect_to(bw)
+            end
+        end
+
         local sell = station_surface.create_entity{
             name = "otc-sell-chest",
-            position = {2, -2},
+            position = {6, 6},
             force = "player",
         }
         if sell then
@@ -708,6 +796,30 @@ function M.expand_from_gate(surface, gate_pos, shape)
         if teleporter then
             storage.otc_teleporters = storage.otc_teleporters or {}
             storage.otc_teleporters[teleporter.unit_number] = station_name
+        end
+
+        local return_teleporter = station_surface.create_entity{
+            name = "otc-teleporter",
+            position = {0, 5},
+            direction = defines.direction.west,
+            force = "player",
+        }
+        if return_teleporter then
+            local return_pos
+            if dx > 0 then
+                return_pos = {teleporter_pos[1], teleporter_pos[2] + 1}
+            elseif dx < 0 then
+                return_pos = {teleporter_pos[1], teleporter_pos[2] - 1}
+            elseif dy > 0 then
+                return_pos = {teleporter_pos[1] - 1, teleporter_pos[2]}
+            else
+                return_pos = {teleporter_pos[1] + 1, teleporter_pos[2]}
+            end
+            storage.otc_return_teleporters = storage.otc_return_teleporters or {}
+            storage.otc_return_teleporters[return_teleporter.unit_number] = {
+                surface = "nauvis",
+                position = return_pos,
+            }
         end
 
     else
