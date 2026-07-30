@@ -73,7 +73,8 @@ function M.init_gates_for_surface(surface)
     end
 end
 
-function M.place_gate_controls(surface)
+function M.place_gate_controls(surface, force_name)
+    force_name = force_name or "player"
     for _, gate in pairs(storage.gates) do
         if gate.surface_name ~= surface.name then goto continue end
         local a = AIRLOCKS[gate.dir]
@@ -82,7 +83,7 @@ function M.place_gate_controls(surface)
         local gate_entity = surface.create_entity {
             name = "gate",
             position = a.gate,
-            force = "player",
+            force = force_name,
             direction = a.gate_dir,
             create_build_effect_smoke = false,
         }
@@ -95,7 +96,7 @@ function M.place_gate_controls(surface)
         local computer = surface.create_entity {
             name = "otc-gate-computer",
             position = a.computer,
-            force = "player",
+            force = force_name,
         }
         if computer then
             computer.minable = false

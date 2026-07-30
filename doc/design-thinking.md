@@ -32,3 +32,12 @@
 
 * We want to avoid players going broke and soft locking themselves, it's currently either too easy to happen or will never happen
 * Ideally the most profitable path should be to create sellable products across as many steps as possible, however it should also be viable to purchase intermediaries, transform them, then sell outputs, kind of a low profit arbitrarge
+
+# forces
+
+* players start on nauvis in the default force.  Default force can visit anywhere but not buy/sell/interact.  There is a computer in the nauvis base where players can create/join/leave companies (small fee) companies can own one orbital station.  First player in a company is automatically a manager, can approve/reject new applications, can make other people managers.  
+* Last player leaves a company it goes into receivership, all its assets are now available for purchase at a reduced price.  Players can do that from the computer, it's like join but costs money and is auto approved and player who spends becomes a manager
+
+# Personal money
+
+* players have personal credits which they start with but also earn via their shares in a force.  have to work out how to give the force working capital, how to handle dividends and new share issues, maybe joining a force is a buy in rather than just a free join

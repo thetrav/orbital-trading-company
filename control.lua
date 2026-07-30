@@ -5,9 +5,11 @@ local expand_gui = require("scripts.expand_gui")
 local buy_chest = require("scripts.buy_chest")
 local sell_chest = require("scripts.sell_chest")
 local supply_demand = require("scripts.supply_demand")
+local company_gui = require("scripts.company_gui")
 
 local BUY_CHEST_NAME = "otc-buy-chest"
 local SELL_CHEST_NAME = "otc-sell-chest"
+local NAUVIS_FORCE = "Nauvis"
 
 local function clear_enemies()
     local nauvis = game.surfaces["nauvis"]
@@ -47,7 +49,7 @@ local function build_starting_room(surface)
                     local wall = surface.create_entity{
                         name = "otc-platform-wall",
                         position = {x, y},
-                        force = "player",
+                        force = NAUVIS_FORCE,
                     }
                     if wall then
                         wall.minable = false
@@ -59,7 +61,83 @@ local function build_starting_room(surface)
     end
 
     platform_gates.init_gates_for_surface(surface)
-    platform_gates.place_gate_controls(surface)
+    platform_gates.place_gate_controls(surface, NAUVIS_FORCE)
+
+    local monitor = surface.create_entity{
+        name = "otc-company-monitor",
+        position = {4, 4},
+        force = NAUVIS_FORCE,
+        icon = { type = "space-location", name = "nauvis" },
+    }
+    if monitor then
+        monitor.minable = false
+        monitor.destructible = false
+        local behavior = monitor.get_or_create_control_behavior()
+        behavior.set_message(-1, { text = "Company Management" })
+    end
+end
+
+local function ensure_company_setup()
+    if not storage.companies then
+        storage.companies = {}
+    end
+    if not storage.companies[NAUVIS_FORCE] then
+        storage.companies[NAUVIS_FORCE] = { credits = 0 }
+    end
+    if not game.forces[NAUVIS_FORCE] then
+        game.create_force(NAUVIS_FORCE)
+    end
+    for _, force in pairs(game.forces) do
+        force.set_cease_fire(game.forces[NAUVIS_FORCE], true)
+        force.set_friend(game.forces[NAUVIS_FORCE], true)
+    end
+    if not storage.station_forces then
+        storage.station_forces = {}
+    end
+    if storage.players then
+        for _, pd in pairs(storage.players) do
+            if pd.credits and not pd.company then
+                local legacy_name = "Default"
+                if not storage.companies[legacy_name] then
+                    if not game.forces[legacy_name] then
+                        game.create_force(legacy_name)
+                        for _, force in pairs(game.forces) do
+                            force.set_cease_fire(game.forces[legacy_name], true)
+                            force.set_friend(game.forces[legacy_name], true)
+                        end
+                    end
+                    storage.companies[legacy_name] = { credits = pd.credits }
+                end
+                pd.company = legacy_name
+                pd.credits = nil
+            end
+        end
+    end
+    for _, data in pairs(storage.buy_chests or {}) do
+        local c = data.chest
+        ---@diagnostic disable-next-line: undefined-field
+        if not data.force_name and c and c.valid then
+            ---@diagnostic disable-next-line: undefined-field
+            data.force_name = c.force.name
+        end
+    end
+    for unit_number, data in pairs(storage.sell_chests or {}) do
+        if type(data) == "userdata" then
+            ---@diagnostic disable-next-line: undefined-field
+            if data.valid then
+                storage.sell_chests[unit_number] = {
+                    chest = data,
+                    ---@diagnostic disable-next-line: undefined-field
+                    force_name = data.force.name,
+                }
+            end
+        else
+            local c = data.chest
+            if c and not data.force_name and c.valid then
+                data.force_name = c.force.name
+            end
+        end
+    end
 end
 
 script.on_init(function()
@@ -71,6 +149,7 @@ script.on_init(function()
     storage.players = {}
 
     supply_demand.init()
+    ensure_company_setup()
 
     clear_enemies()
     game.map_settings.pollution.enabled = false
@@ -99,8 +178,10 @@ end)
 script.on_event(defines.events.on_player_created, function(event)
     local player = game.get_player(event.player_index)
     if player then
-        market_gui.init_player(player)
-        expand_gui.init_player(player)
+        storage.players = storage.players or {}
+        if not storage.players[player.index] then
+            storage.players[player.index] = {}
+        end
         player.insert{name = "storage-tank", count = 1}
         player.insert{name = "pipe-to-ground", count = 2}
     end
@@ -109,16 +190,13 @@ end)
 script.on_event(defines.events.on_player_joined_game, function(event)
     local player = game.get_player(event.player_index)
     if player then
-        if not player.gui.screen.otc_credits_frame then
-            market_gui.init_player(player)
-        end
-        if not player.gui.screen.otc_expand_frame then
-            expand_gui.init_player(player)
-        end
+        company_gui.init_or_restore(player)
     end
 end)
 
-script.on_configuration_changed(function() end)
+script.on_configuration_changed(function()
+    ensure_company_setup()
+end)
 
 script.on_nth_tick(1, function()
     buy_chest.process()
@@ -139,6 +217,16 @@ end)
 script.on_event(defines.events.on_built_entity, function(event)
     buy_chest.register(event.created_entity)
     sell_chest.register(event.created_entity)
+end)
+
+script.on_event(defines.events.on_selected_entity_changed, function(event)
+    local player = game.get_player(event.player_index)
+    if not player then return end
+    local entity = player.selected
+    if not entity or not entity.valid then return end
+    if entity.name == "otc-company-monitor" then
+        company_gui.open(player)
+    end
 end)
 
 script.on_event(defines.events.on_gui_opened, function(event)
@@ -233,6 +321,25 @@ end)
 
 
 script.on_event(defines.events.on_gui_click, function(event)
+    if event.element.name == "otc_company_create" then
+        local player = game.get_player(event.player_index)
+        if player then company_gui.handle_create(player) end
+        return
+    end
+
+    if event.element.name == "otc_company_close" then
+        local player = game.get_player(event.player_index)
+        if player then company_gui.close(player) end
+        return
+    end
+
+    local join_name = string.match(event.element.name, "^otc_company_join_(.+)$")
+    if join_name then
+        local player = game.get_player(event.player_index)
+        if player then company_gui.handle_join(player, join_name) end
+        return
+    end
+
     if event.element.name == "otc_market_search_button" then
         local player = game.get_player(event.player_index)
         if not player then return end

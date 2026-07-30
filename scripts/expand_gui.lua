@@ -303,6 +303,8 @@ function M.handle_buy_expansion(player)
         return
     end
 
+    local company = storage.companies and storage.companies[player_data.company]
+    local credits = company and company.credits or 0
     local cost = shape == "hub" and HUB_COST
         or shape == "corridor" and CORRIDOR_COST
         or shape == "factory" and FACTORY_COST
@@ -310,17 +312,17 @@ function M.handle_buy_expansion(player)
         or shape == "water_connection" and WATER_CONNECTION_COST
         or shape == "iron_asteroid" and IRON_ASTEROID_COST
         or COPPER_ASTEROID_COST
-    if cost > 0 and player_data.credits < cost then
+    if cost > 0 and credits < cost then
         player.print("Not enough credits!")
         return
     end
 
     local surface = game.surfaces[gate_state.surface_name]
-    local ok, err = platform.expand_from_gate(surface, gate_state.pos, shape)
+    local ok, err = platform.expand_from_gate(surface, gate_state.pos, shape, player.force.name)
     if ok then
-        player_data.credits = player_data.credits - cost
+        company.credits = company.credits - cost
         gate_state.expanded = true
-        market_gui.update_credits_gui(player.index)
+        market_gui.update_all_forces_credits()
         player.print("Platform expanded!")
         M.close(player)
     elseif err then

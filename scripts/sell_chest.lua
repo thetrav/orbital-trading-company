@@ -13,7 +13,10 @@ function M.register(entity)
     if entity.name ~= SELL_CHEST_NAME then return end
 
     storage.sell_chests = storage.sell_chests or {}
-    storage.sell_chests[entity.unit_number] = entity
+    storage.sell_chests[entity.unit_number] = {
+        chest = entity,
+        force_name = entity.force.name,
+    }
 end
 
 function M.unregister(unit_number)
@@ -24,33 +27,40 @@ end
 function M.process()
     if not storage.sell_chests then return end
 
-    for unit_number, chest in pairs(storage.sell_chests) do
-        if not chest.valid then
+    for unit_number, data in pairs(storage.sell_chests) do
+        if not data.chest.valid then
             storage.sell_chests[unit_number] = nil
         else
-            local inventory = chest.get_inventory(defines.inventory.chest)
+            local force_name = data.force_name
+            if not force_name then
+                if data.chest.valid then
+                    data.force_name = data.chest.force.name
+                    force_name = data.force_name
+                else
+                    goto continue
+                end
+            end
+            local company = storage.companies and storage.companies[force_name]
+            if not company then goto continue end
+
+            local inventory = data.chest.get_inventory(defines.inventory.chest)
             local contents = inventory.get_contents()
             if #contents > 0 then
-                local player = game.connected_players[1]
-                if player then
-                    local player_data = storage.players and storage.players[player.index]
-                    if player_data then
-                        for _, item in pairs(contents) do
-                            if item_filter.is_item_allowed(item.name, chest.force) then
-                                local removed = inventory.remove({ name = item.name, count = item.count })
-                                if removed > 0 then
-                                    local price = utils.get_price(item.name)
-                                    local sell_value = math.floor(removed * price * SELL_MULTIPLIER + 0.5)
-                                    player_data.credits = player_data.credits + sell_value
-                                    supply_demand.record_sell(item.name, removed)
-                                    market_gui.update_credits_gui(player.index)
-                                end
-                            end
+                for _, item in pairs(contents) do
+                    if item_filter.is_item_allowed(item.name, data.chest.force) then
+                        local removed = inventory.remove({ name = item.name, count = item.count })
+                        if removed > 0 then
+                            local price = utils.get_price(item.name)
+                            local sell_value = math.floor(removed * price * SELL_MULTIPLIER + 0.5)
+                            company.credits = company.credits + sell_value
+                            supply_demand.record_sell(item.name, removed)
+                            market_gui.update_all_forces_credits()
                         end
                     end
                 end
             end
         end
+        ::continue::
     end
 end
 

@@ -12,14 +12,15 @@ local sell_chest = require("scripts.sell_chest")
 
 local R = 5
 
-local function place_wall(surface, pos)
+local function place_wall(surface, pos, force_name)
+    force_name = force_name or "player"
     if platform_gates.is_entity_position(pos[1], pos[2]) then return end
     local existing = surface.find_entity("otc-platform-wall", pos)
     if not existing then
         local wall = surface.create_entity {
             name = "otc-platform-wall",
             position = pos,
-            force = "player",
+            force = force_name,
         }
         if wall then
             wall.minable = false
@@ -74,15 +75,17 @@ local function try_create(e)
     return e
 end
 
-local function place_gate(surface, side, pos)
+local function place_gate(surface, side, pos, force_name)
+    force_name = force_name or "player"
     return try_create(surface.create_entity {
-        name = "gate", position = pos, force = "player",
+        name = "gate", position = pos, force = force_name,
         direction = side_is_vertical(side) and defines.direction.north or defines.direction.east,
         create_build_effect_smoke = false
     })
 end
 
-local function place_computer(surface, gx, gy, side)
+local function place_computer(surface, gx, gy, side, force_name)
+    force_name = force_name or "player"
     local cdx, cdy = (side == "east" and 1 or side == "west" and -1 or 0),
                      (side == "north" and 1 or side == "south" and -1 or 0)
     local pos = {gx + cdx, gy + cdy}
@@ -107,7 +110,7 @@ local function place_computer(surface, gx, gy, side)
     end
     if not joined then
         return try_create(surface.create_entity {
-            name = "otc-gate-computer", position = pos, force = "player",
+            name = "otc-gate-computer", position = pos, force = force_name,
         })
     end
 end
@@ -138,9 +141,9 @@ local function apply_tiles(surface, positions)
     surface.set_tiles(t, false)
 end
 
-local function apply_walls(surface, positions)
+local function apply_walls(surface, positions, force_name)
     for _, p in ipairs(positions) do
-        place_wall(surface, p)
+        place_wall(surface, p, force_name)
     end
 end
 
@@ -389,8 +392,9 @@ function M.clear_preview(objects)
     end
 end
 
-function M.expand_from_gate(surface, gate_pos, shape)
+function M.expand_from_gate(surface, gate_pos, shape, force_name)
     shape = shape or "hub"
+    force_name = force_name or "player"
 
     local key = surface.name .. ":" .. gate_pos.x .. "," .. gate_pos.y
     local dir = platform_gates.get_gate_dir(key)
@@ -416,15 +420,15 @@ function M.expand_from_gate(surface, gate_pos, shape)
 
         local tiles, walls = hub_shape.get_positions(CX, CY, conn_side, gate_pos)
         apply_tiles(surface, tiles)
-        apply_walls(surface, walls)
+        apply_walls(surface, walls, force_name)
 
         for _, side in ipairs{"east", "west", "north", "south"} do
             local gx = CX + (side == "east" and 6 or side == "west" and -6 or 0)
             local gy = CY + (side == "north" and 6 or side == "south" and -6 or 0)
-            local gate_entity = place_gate(surface, side, {gx, gy})
+            local gate_entity = place_gate(surface, side, {gx, gy}, force_name)
             local computer_entity
             if side ~= conn_side then
-                computer_entity = place_computer(surface, gx, gy, side)
+                computer_entity = place_computer(surface, gx, gy, side, force_name)
             end
             register_gate(gx, gy, side, gate_entity, computer_entity, surface.name)
         end
@@ -444,7 +448,7 @@ function M.expand_from_gate(surface, gate_pos, shape)
 
         local tiles, walls = corridor_shape.get_positions(gate_pos, dir)
         apply_tiles(surface, tiles)
-        apply_walls(surface, walls)
+        apply_walls(surface, walls, force_name)
 
         local conn_side, far_side
         if dir == "east" then conn_side, far_side = "west", "east"
@@ -457,19 +461,19 @@ function M.expand_from_gate(surface, gate_pos, shape)
             local s = (dir == "east") and 1 or -1
             local cgx = gate_pos.x + 3 * s
             local fgx = gate_pos.x + 24 * s
-            local conn_gate = place_gate(surface, conn_side, {cgx, gate_pos.y})
+            local conn_gate = place_gate(surface, conn_side, {cgx, gate_pos.y}, force_name)
             register_gate(cgx, gate_pos.y, conn_side, conn_gate, nil, surface.name)
-            local far_gate = place_gate(surface, far_side, {fgx, gate_pos.y})
-            local far_computer = place_computer(surface, fgx, gate_pos.y, far_side)
+            local far_gate = place_gate(surface, far_side, {fgx, gate_pos.y}, force_name)
+            local far_computer = place_computer(surface, fgx, gate_pos.y, far_side, force_name)
             register_gate(fgx, gate_pos.y, far_side, far_gate, far_computer, surface.name)
         else
             local s = (dir == "north") and 1 or -1
             local cgy = gate_pos.y + 3 * s
             local fgy = gate_pos.y + 24 * s
-            local conn_gate = place_gate(surface, conn_side, {gate_pos.x, cgy})
+            local conn_gate = place_gate(surface, conn_side, {gate_pos.x, cgy}, force_name)
             register_gate(gate_pos.x, cgy, conn_side, conn_gate, nil, surface.name)
-            local far_gate = place_gate(surface, far_side, {gate_pos.x, fgy})
-            local far_computer = place_computer(surface, gate_pos.x, fgy, far_side)
+            local far_gate = place_gate(surface, far_side, {gate_pos.x, fgy}, force_name)
+            local far_computer = place_computer(surface, gate_pos.x, fgy, far_side, force_name)
             register_gate(gate_pos.x, fgy, far_side, far_gate, far_computer, surface.name)
         end
 
@@ -493,11 +497,11 @@ function M.expand_from_gate(surface, gate_pos, shape)
 
         local tiles, walls = factory_shape.get_positions(CX, CY, conn_side, gate_pos)
         apply_tiles(surface, tiles)
-        apply_walls(surface, walls)
+        apply_walls(surface, walls, force_name)
 
         local gx = CX + (conn_side == "east" and 16 or conn_side == "west" and -15 or 0)
         local gy = CY + (conn_side == "north" and 16 or conn_side == "south" and -15 or 0)
-        local gate_entity = place_gate(surface, conn_side, {gx, gy})
+        local gate_entity = place_gate(surface, conn_side, {gx, gy}, force_name)
         register_gate(gx, gy, conn_side, gate_entity, nil, surface.name)
 
     elseif shape == "iron_asteroid" then
@@ -516,11 +520,11 @@ function M.expand_from_gate(surface, gate_pos, shape)
         local tiles, resources, walls = iron_asteroid_shape.get_positions(gate_pos, dir)
         apply_custom_tiles(surface, tiles, true)
         place_resources(surface, resources)
-        apply_walls(surface, walls)
+        apply_walls(surface, walls, force_name)
 
         local gate_pos2 = iron_asteroid_shape.get_gate_pos(gate_pos, dir)
         if gate_pos2 then
-            local asteroid_gate = place_gate(surface, dir, gate_pos2)
+            local asteroid_gate = place_gate(surface, dir, gate_pos2, force_name)
             register_gate(gate_pos2.x, gate_pos2.y, dir, asteroid_gate, nil, surface.name)
         end
 
@@ -540,11 +544,11 @@ function M.expand_from_gate(surface, gate_pos, shape)
         local tiles, resources, walls = copper_asteroid_shape.get_positions(gate_pos, dir)
         apply_custom_tiles(surface, tiles, true)
         place_resources(surface, resources)
-        apply_walls(surface, walls)
+        apply_walls(surface, walls, force_name)
 
         local gate_pos2 = copper_asteroid_shape.get_gate_pos(gate_pos, dir)
         if gate_pos2 then
-            local asteroid_gate = place_gate(surface, dir, gate_pos2)
+            local asteroid_gate = place_gate(surface, dir, gate_pos2, force_name)
             register_gate(gate_pos2.x, gate_pos2.y, dir, asteroid_gate, nil, surface.name)
         end
 
@@ -579,7 +583,7 @@ function M.expand_from_gate(surface, gate_pos, shape)
 
         local tiles, walls = water_connection_shape.get_positions(CX, CY, conn_side, gate_pos)
         apply_tiles(surface, tiles)
-        apply_walls(surface, walls)
+        apply_walls(surface, walls, force_name)
 
         local dir_to_defines = {
             east = defines.direction.east, west = defines.direction.west,
@@ -589,7 +593,7 @@ function M.expand_from_gate(surface, gate_pos, shape)
             name = "otc-water-pump",
             position = {CX, CY},
             direction = dir_to_defines[dir],
-            force = "player",
+            force = force_name,
             create_build_effect_smoke = false,
         }
         if pump then
@@ -710,15 +714,15 @@ function M.expand_from_gate(surface, gate_pos, shape)
         else gate_x, gate_y, conn_side = cx, cy + 7, "north"
         end
 
-        apply_walls(surface, wall_positions)
+        apply_walls(surface, wall_positions, force_name)
 
-        local gate_entity = place_gate(surface, conn_side, {gate_x, gate_y})
+        local gate_entity = place_gate(surface, conn_side, {gate_x, gate_y}, force_name)
         register_gate(gate_x, gate_y, conn_side, gate_entity, nil, surface.name)
 
         local silo = surface.create_entity{
             name = "rocket-silo",
             position = {cx, cy},
-            force = "player",
+            force = force_name,
         }
         if silo then
             silo.minable = false
@@ -744,6 +748,8 @@ function M.expand_from_gate(surface, gate_pos, shape)
                 entity = { settings = {}, treat_missing_as_default = false },
             },
         })
+        storage.station_forces = storage.station_forces or {}
+        storage.station_forces[station_name] = force_name
         log("orbital_station: surface created, requesting chunk generation")
         station_surface.request_to_generate_chunks({0, 0}, 4)
         station_surface.force_generate_chunk_requests()
@@ -779,20 +785,20 @@ function M.expand_from_gate(surface, gate_pos, shape)
         station_surface.set_tiles(station_hazard, false)
 
         for y = -7, 7 do
-            place_wall(station_surface, {-7, y})
-            place_wall(station_surface, {7, y})
+            place_wall(station_surface, {-7, y}, force_name)
+            place_wall(station_surface, {7, y}, force_name)
         end
         for x = -7, 7 do
-            place_wall(station_surface, {x, -7})
+            place_wall(station_surface, {x, -7}, force_name)
             if x ~= 0 then
-                place_wall(station_surface, {x, 7})
+                place_wall(station_surface, {x, 7}, force_name)
             end
         end
 
         for _, pos in ipairs{{-7, 0}, {7, 0}, {0, -7}} do
             local existing = station_surface.find_entity("otc-platform-wall", pos)
             if not existing then
-                local w = station_surface.create_entity{name = "otc-platform-wall", position = pos, force = "player"}
+                local w = station_surface.create_entity{name = "otc-platform-wall", position = pos, force = force_name}
                 if w then w.minable = false; w.destructible = false end
             end
         end
@@ -800,23 +806,23 @@ function M.expand_from_gate(surface, gate_pos, shape)
         for _, pos in ipairs{{-1, 8}, {1, 8}} do
             local existing = station_surface.find_entity("otc-platform-wall", pos)
             if not existing then
-                local w = station_surface.create_entity{name = "otc-platform-wall", position = pos, force = "player"}
+                local w = station_surface.create_entity{name = "otc-platform-wall", position = pos, force = force_name}
                 if w then w.minable = false; w.destructible = false end
             end
         end
 
-        local station_gate = place_gate(station_surface, "south", {0, 7})
+        local station_gate = place_gate(station_surface, "south", {0, 7}, force_name)
         local station_computer = try_create(station_surface.create_entity{
             name = "otc-gate-computer",
             position = {0, 8},
-            force = "player",
+            force = force_name,
         })
         register_gate(0, 7, "north", station_gate, station_computer, station_name)
 
         local station_silo = station_surface.create_entity{
             name = "rocket-silo",
             position = {0, 0},
-            force = "player",
+            force = force_name,
         }
         if station_silo then
             station_silo.minable = false
@@ -828,7 +834,7 @@ function M.expand_from_gate(surface, gate_pos, shape)
         local buy = station_surface.create_entity{
             name = "otc-buy-chest",
             position = {-6, 6},
-            force = "player",
+            force = force_name,
         }
         if buy then
             buy.minable = false
@@ -839,7 +845,7 @@ function M.expand_from_gate(surface, gate_pos, shape)
         local combinator = station_surface.create_entity{
             name = "constant-combinator",
             position = {-6, 5},
-            force = "player",
+            force = force_name,
         }
         if combinator and buy then
             combinator.minable = false
@@ -855,7 +861,7 @@ function M.expand_from_gate(surface, gate_pos, shape)
         local sell = station_surface.create_entity{
             name = "otc-sell-chest",
             position = {6, 6},
-            force = "player",
+            force = force_name,
         }
         if sell then
             sell.minable = false
@@ -887,7 +893,7 @@ function M.expand_from_gate(surface, gate_pos, shape)
             name = "otc-teleporter",
             position = teleporter_pos,
             direction = teleporter_dir,
-            force = "player",
+            force = force_name,
         }
         if teleporter then
             storage.otc_teleporters = storage.otc_teleporters or {}
@@ -898,7 +904,7 @@ function M.expand_from_gate(surface, gate_pos, shape)
             name = "otc-teleporter",
             position = {0, 5},
             direction = defines.direction.west,
-            force = "player",
+            force = force_name,
         }
         if return_teleporter then
             local return_pos

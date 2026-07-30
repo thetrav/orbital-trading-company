@@ -37,7 +37,10 @@ function M.register(entity)
     cb.read_contents = false
 
     storage.buy_chests = storage.buy_chests or {}
-    storage.buy_chests[entity.unit_number] = { chest = entity }
+    storage.buy_chests[entity.unit_number] = {
+        chest = entity,
+        force_name = entity.force.name,
+    }
 end
 
 function M.unregister(unit_number)
@@ -52,6 +55,18 @@ function M.process()
         if not data.chest.valid then
             storage.buy_chests[unit_number] = nil
         else
+            local force_name = data.force_name
+            if not force_name then
+                if data.chest.valid then
+                    data.force_name = data.chest.force.name
+                    force_name = data.force_name
+                else
+                    goto continue
+                end
+            end
+            local company = storage.companies and storage.companies[force_name]
+            if not company then goto continue end
+
             local signals = read_circuit_signals(data.chest)
             local cb = data.chest.get_or_create_control_behavior()
             if cb.read_contents then cb.read_contents = false end
@@ -64,21 +79,15 @@ function M.process()
                         local deficit = desired - current
 
                         if deficit > 0 then
-                            local player = game.connected_players[1]
-                            if player then
-                                local player_data = storage.players and storage.players[player.index]
-                                if player_data then
-                                    local buy_price = math.floor(utils.get_price(item_name) * BUY_MULTIPLIER + 0.5)
-                                    local can_afford = math.floor(player_data.credits / buy_price)
-                                    local to_buy = math.min(deficit, can_afford)
-                                    if to_buy > 0 then
-                                        local inserted = inventory.insert({ name = item_name, count = to_buy })
-                                        if inserted > 0 then
-                                            player_data.credits = player_data.credits - inserted * buy_price
-                                            supply_demand.record_buy(item_name, inserted)
-                                            market_gui.update_credits_gui(player.index)
-                                        end
-                                    end
+                            local buy_price = math.floor(utils.get_price(item_name) * BUY_MULTIPLIER + 0.5)
+                            local can_afford = math.floor(company.credits / buy_price)
+                            local to_buy = math.min(deficit, can_afford)
+                            if to_buy > 0 then
+                                local inserted = inventory.insert({ name = item_name, count = to_buy })
+                                if inserted > 0 then
+                                    company.credits = company.credits - inserted * buy_price
+                                    supply_demand.record_buy(item_name, inserted)
+                                    market_gui.update_all_forces_credits()
                                 end
                             end
                         end
@@ -86,6 +95,7 @@ function M.process()
                 end
             end
         end
+        ::continue::
     end
 end
 

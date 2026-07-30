@@ -3,8 +3,42 @@ local item_filter = require("scripts.item_filter")
 
 local M = {}
 
-local STARTING_CREDITS = 5000
 local BUY_MULTIPLIER = 1.01
+
+local function get_company_credits(player_index)
+    local player_data = storage.players and storage.players[player_index]
+    if not player_data then return 0 end
+    local company_name = player_data.company
+    if not company_name then return 0 end
+    local company = storage.companies and storage.companies[company_name]
+    return company and company.credits or 0
+end
+
+local function update_credits_gui(player_index)
+    local player = game.get_player(player_index)
+    if not player then return end
+    local frame = player.gui.screen.otc_credits_frame
+    if not frame then return end
+    local label = frame.otc_credits_label
+    if not label then return end
+    local credits = get_company_credits(player_index)
+    label.caption = utils.format_number(credits)
+end
+
+function M.update_credits_gui(player_index)
+    update_credits_gui(player_index)
+end
+
+function M.update_all_forces_credits()
+    local updated = {}
+    for _, player in pairs(game.connected_players) do
+        local player_data = storage.players and storage.players[player.index]
+        if player_data and player_data.company and not updated[player.index] then
+            update_credits_gui(player.index)
+            updated[player.index] = true
+        end
+    end
+end
 
 function M.create_credits_gui(player)
     if player.gui.screen.otc_credits_frame then
@@ -48,8 +82,7 @@ function M.create_credits_gui(player)
     drag.style.height = 24
     drag.style.horizontally_stretchable = true
 
-    local player_data = storage.players and storage.players[player.index]
-    local credits = player_data and player_data.credits or STARTING_CREDITS
+    local credits = get_company_credits(player.index)
     local label = frame.add {
         type = "label",
         name = "otc_credits_label",
@@ -60,18 +93,6 @@ function M.create_credits_gui(player)
     label.style.horizontally_stretchable = true
 
     return frame
-end
-
-function M.update_credits_gui(player_index)
-    local player = game.get_player(player_index)
-    if not player then return end
-    local frame = player.gui.screen.otc_credits_frame
-    if not frame then return end
-    local label = frame.otc_credits_label
-    if not label then return end
-    local player_data = storage.players and storage.players[player_index]
-    local credits = player_data and player_data.credits or 0
-    label.caption = utils.format_number(credits)
 end
 
 local function get_player_filter(player_index)
@@ -275,7 +296,7 @@ end
 function M.init_player(player)
     storage.players = storage.players or {}
     if not storage.players[player.index] then
-        storage.players[player.index] = { credits = STARTING_CREDITS }
+        storage.players[player.index] = {}
     end
     M.create_credits_gui(player)
     M.create_market_gui(player)
