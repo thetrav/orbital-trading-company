@@ -12,8 +12,22 @@ local sell_chest = require("scripts.sell_chest")
 
 local R = 5
 
+local function is_nauvis(surface)
+    return surface.name == "nauvis"
+end
+
+local function get_surface_force(surface, force_name, entity_type)
+    if is_nauvis(surface) then
+        if entity_type == "teleporter" then
+            return force_name or "player"
+        end
+        return "Nauvis"
+    end
+    return force_name or "player"
+end
+
 local function place_wall(surface, pos, force_name)
-    force_name = force_name or "player"
+    force_name = get_surface_force(surface, force_name, "wall")
     if platform_gates.is_entity_position(pos[1], pos[2]) then return end
     local existing = surface.find_entity("otc-platform-wall", pos)
     if not existing then
@@ -76,7 +90,7 @@ local function try_create(e)
 end
 
 local function place_gate(surface, side, pos, force_name)
-    force_name = force_name or "player"
+    force_name = get_surface_force(surface, force_name, "gate") or "nauvis"
     return try_create(surface.create_entity {
         name = "gate", position = pos, force = force_name,
         direction = side_is_vertical(side) and defines.direction.north or defines.direction.east,
@@ -85,7 +99,7 @@ local function place_gate(surface, side, pos, force_name)
 end
 
 local function place_computer(surface, gx, gy, side, force_name)
-    force_name = force_name or "player"
+    force_name = get_surface_force(surface, force_name, "computer") or "nauvis"
     local cdx, cdy = (side == "east" and 1 or side == "west" and -1 or 0),
                      (side == "north" and 1 or side == "south" and -1 or 0)
     local pos = {gx + cdx, gy + cdy}
@@ -593,7 +607,7 @@ function M.expand_from_gate(surface, gate_pos, shape, force_name)
             name = "otc-water-pump",
             position = {CX, CY},
             direction = dir_to_defines[dir],
-            force = force_name,
+            force = get_surface_force(surface, force_name, "water_pump"),
             create_build_effect_smoke = false,
         }
         if pump then
@@ -722,7 +736,7 @@ function M.expand_from_gate(surface, gate_pos, shape, force_name)
         local silo = surface.create_entity{
             name = "rocket-silo",
             position = {cx, cy},
-            force = force_name,
+            force = get_surface_force(surface, force_name, "rocket_silo"),
         }
         if silo then
             silo.minable = false
@@ -893,7 +907,7 @@ function M.expand_from_gate(surface, gate_pos, shape, force_name)
             name = "otc-teleporter",
             position = teleporter_pos,
             direction = teleporter_dir,
-            force = force_name,
+            force = get_surface_force(surface, force_name, "teleporter"),
         }
         if teleporter then
             storage.otc_teleporters = storage.otc_teleporters or {}
@@ -930,5 +944,8 @@ function M.expand_from_gate(surface, gate_pos, shape, force_name)
 
     return true
 end
+
+M.is_nauvis = is_nauvis
+M.get_surface_force = get_surface_force
 
 return M

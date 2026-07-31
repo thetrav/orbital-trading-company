@@ -4,12 +4,8 @@ A Factorio 2.0 mod where players start on a 10x10 concrete platform floating in 
 
 ## How It Works
 
-- On game start, the player spawns on a small concrete platform surrounded by void
-- A **Buy Chest** and a **Constant Combinator** are placed automatically
-- The combinator is pre-configured with 1 iron ore and 1 coal signals
 - A green circuit wire connects the combinator to the buy chest
 - The buy chest reads the circuit network signals and fills itself to match, deducting 1 credit per item
-- Players start with **1,000 credits**
 - The chest's "Read contents" option is disabled to prevent feedback loops
 
 ## Usage
@@ -18,7 +14,11 @@ A Factorio 2.0 mod where players start on a 10x10 concrete platform floating in 
 2. Connect them with green circuit wire
 3. Set signals on the combinator for the items you want (e.g., 5 iron plate = buy 5 iron plate)
 4. The buy chest automatically fills to match the combinator signals
-5. Each item costs 1 credit — your credit balance is shown in the GUI
+5. cost can be found in the market ui, the credits for your company is diplayed in the top center
+6. Use purchased goods to make more advanced intermediates
+7. Place intermediates in a sell chest to get paid for them
+
+Note that there are small transaction costs for buying and selling, if you buy something and immediately sell it you will make a loss.
 
 ## Installation
 
