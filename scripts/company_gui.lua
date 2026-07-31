@@ -41,14 +41,16 @@ function M.open(player)
         caption = "Orbital Trading Company",
         ignored_by_interaction = true,
     }
+    
     local spacer = title_flow.add { type = "empty-widget", style = "draggable_space" }
     spacer.style.height = 24
     spacer.style.horizontally_stretchable = true
     title_flow.add {
-        type = "button",
+        type = "sprite-button",
         name = "otc_company_close",
-        caption = "✕",
+        sprite = "utility/close",
         style = "frame_action_button",
+        tooltip = {"gui.close"},
     }
 
     local player_data = storage.players[player.index]

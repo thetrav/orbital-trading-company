@@ -50,10 +50,11 @@ function M.create_expand_gui(player)
     drag.style.horizontally_stretchable = true
 
     title_flow.add {
-        type = "button",
+        type = "sprite-button",
         name = "otc_expand_close",
-        caption = "✕",
+        sprite = "utility/close",
         style = "frame_action_button",
+        tooltip = {"gui.close"},
     }
 
     local inner = frame.add {
