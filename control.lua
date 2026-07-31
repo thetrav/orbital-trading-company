@@ -435,28 +435,29 @@ script.on_event(defines.events.on_gui_click, function(event)
         return
     end
 
-if event.element.name == "otc_trading_close" then
+    if event.element.name == "otc_trading_close" then
         local player = game.get_player(event.player_index)
         if player then trading_gui.close(player) end
         return
     end
 
-    if event.element.name == "otc_trading_force_dropdown" then
-        local player = game.get_player(event.player_index)
-        if not player then return end
-        local element = event.element
-        local force_name = element.items[element.selected_index]
-        if force_name then
-            trading_gui.handle_force_change(player, force_name)
-        end
-        return
-    end
-
-
     if event.element.name == "otc_expand_buy_button" then
         local player = game.get_player(event.player_index)
         if not player then return end
         expand_gui.handle_buy_expansion(player)
+    end
+end)
+
+script.on_event(defines.events.on_gui_selection_state_changed, function(event)
+    local player = game.get_player(event.player_index)
+    if not player then return end
+    if event.element.name == "otc_trading_force_dropdown" then
+        local element = event.element
+        local force_name = element.items and element.items[element.selected_index]
+        if force_name then
+            trading_gui.handle_force_change(player, force_name)
+        end
+        return
     end
 end)
 
@@ -476,6 +477,15 @@ script.on_event(defines.events.on_gui_checked_state_changed, function(event)
         end
         market_gui.rebuild_market_list(player)
         return
+    end
+
+    local series_name = string.match(event.element.name, "^otc_series_(.+)$")
+    if series_name then
+        local kind, item_name = string.match(series_name, "^(%a+)_(.+)$")
+        if kind == "income" or kind == "expense" or kind == "profit" then
+            trading_gui.handle_series_toggle(player, kind, item_name, event.element.state)
+            return
+        end
     end
 
 end)

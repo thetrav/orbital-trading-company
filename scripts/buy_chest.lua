@@ -80,7 +80,8 @@ function M.process()
                         local deficit = desired - current
 
                         if deficit > 0 then
-                            local buy_price = math.floor(utils.get_price(item_name) * BUY_MULTIPLIER + 0.5)
+                            local price = utils.get_price(item_name)
+                            local buy_price = math.floor(price * BUY_MULTIPLIER + 0.5)
                             local can_afford = math.floor(company.credits / buy_price)
                             local to_buy = math.min(deficit, can_afford)
                             if to_buy > 0 then
@@ -88,7 +89,7 @@ function M.process()
                                 if inserted > 0 then
                                     company.credits = company.credits - inserted * buy_price
                                     supply_demand.record_buy(item_name, inserted)
-                                    trading_history.record_buy(data.force_name, item_name, inserted, buy_price)
+                                    trading_history.record_buy(data.force_name, item_name, inserted, price)
                                     market_gui.update_all_forces_credits()
                                 end
                             end
