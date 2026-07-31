@@ -75,6 +75,32 @@ local function get_chart_state(player)
     return player_data.trading_chart_state
 end
 
+local function get_selected_scale(player)
+    local player_data = storage.players and storage.players[player.index]
+    if player_data and player_data.trading_selected_scale then
+        return player_data.trading_selected_scale
+    end
+    return "second"
+end
+
+local function set_selected_scale(player, scale_key)
+    local player_data = storage.players and storage.players[player.index]
+    if player_data then
+        player_data.trading_selected_scale = scale_key
+    end
+end
+
+local function get_rate_label(scale_key)
+    if scale_key == "second" then
+        return "/s"
+    elseif scale_key == "ten_second" then
+        return "/10s"
+    elseif scale_key == "ten_minute" then
+        return "/10m"
+    end
+    return "/s"
+end
+
 local function destroy_render_objects(line_ids)
     if not line_ids then return end
     for _, id in ipairs(line_ids) do
@@ -103,9 +129,10 @@ local function get_series_color_map(chart, kind, selection)
     return colors
 end
 
-local function update_rate_label(state, chart, kind, selection)
+local function update_rate_label(state, chart, kind, selection, scale_key)
     local rate = (chart.sum[kind][TOTAL_KEY] or 0) / chart.length
-    local caption = "₾" .. utils.format_number(math.floor(rate + 0.5)) .. "/s"
+    local rate_suffix = get_rate_label(scale_key)
+    local caption = "₾" .. utils.format_number(math.floor(rate + 0.5)) .. rate_suffix
     if kind == "profit" then
         caption = (rate >= 0 and "+" or "") .. caption
     end
@@ -129,7 +156,7 @@ local function build_chart_view(chart, kind, selection)
     return data, counts, sum
 end
 
-local function render_series(state, chart, kind, selection)
+local function render_series(state, chart, kind, selection, scale_key)
     destroy_render_objects(state.line_ids)
 
     local data, counts, sum = build_chart_view(chart, kind, selection)
@@ -150,7 +177,7 @@ local function render_series(state, chart, kind, selection)
     local _, line_ids = charts.render.line_graph(state.surface, state.chunk, options)
     state.line_ids = line_ids or {}
 
-    update_rate_label(state, chart, kind, selection)
+    update_rate_label(state, chart, kind, selection, scale_key)
 end
 
 local function update_chart(player)
@@ -161,18 +188,19 @@ local function update_chart(player)
     if not chart_state then return end
 
     local force_name = get_selected_force(player)
-    local chart = trading_history.get_chart_data(force_name)
+    local scale_key = get_selected_scale(player)
+    local chart = trading_history.get_chart_data(force_name, scale_key)
     local selection = get_chart_selection(player)
 
     for _, series_key in ipairs(CHART_KINDS) do
         local state = chart_state[series_key]
         if state then
-            render_series(state, chart, series_key, selection)
+            render_series(state, chart, series_key, selection, scale_key)
         end
     end
 end
 
-local function create_chart_panels(panels, player, chart, surface_data)
+local function create_chart_panels(panels, player, chart, surface_data, scale_key)
     local chart_state = get_chart_state(player)
     local selection = get_chart_selection(player)
     local panel_configs = {
@@ -252,9 +280,37 @@ local function create_chart_panels(panels, player, chart, surface_data)
             }
 
             chart_state[cfg.key] = state
-            render_series(state, chart, cfg.key, selection)
+            render_series(state, chart, cfg.key, selection, scale_key)
         end
     end
+end
+
+local function recreate_chart_panels(player)
+    local frame = player.gui.screen.otc_trading_frame
+    if not frame then return end
+
+    local chart_state = get_chart_state(player)
+    if not chart_state then return end
+
+    local surface_data = storage.chart_surface
+    if surface_data then
+        for _, state in pairs(chart_state) do
+            destroy_render_objects(state.line_ids)
+            if state.chunk then
+                charts.surface.free_chunk(surface_data, state.chunk)
+            end
+        end
+    end
+
+    local panels = frame.otc_trading_panels
+    if not panels or not panels.valid then return end
+    panels.clear()
+
+    local force_name = get_selected_force(player)
+    local scale_key = get_selected_scale(player)
+    local chart = trading_history.get_chart_data(force_name, scale_key)
+
+    create_chart_panels(panels, player, chart, surface_data, scale_key)
 end
 
 local function profit_caption(net)
@@ -603,9 +659,10 @@ function M.create_trading_gui(player)
 
     local surface_data = init_chart_surface()
     local force_name = get_selected_force(player)
-    local chart = trading_history.get_chart_data(force_name)
+    local scale_key = get_selected_scale(player)
+    local chart = trading_history.get_chart_data(force_name, scale_key)
 
-    create_chart_panels(panels, player, chart, surface_data)
+    create_chart_panels(panels, player, chart, surface_data, scale_key)
 
     local search_flow = frame.add {
         type = "flow",
@@ -630,6 +687,42 @@ function M.create_trading_gui(player)
         sprite = "utility/search",
         ignored_by_interaction = true,
     }
+
+    local scale_filler = search_flow.add { type = "empty-widget" }
+    scale_filler.style.horizontally_stretchable = true
+
+    local scale_button_1m = search_flow.add {
+        type = "button",
+        name = "otc_trading_scale_second",
+        caption = "1m",
+        style = "button",
+        toggled = false,
+    }
+    local scale_button_10m = search_flow.add {
+        type = "button",
+        name = "otc_trading_scale_ten_second",
+        caption = "10m",
+        style = "button",
+        toggled = false,
+    }
+    local scale_button_1h = search_flow.add {
+        type = "button",
+        name = "otc_trading_scale_ten_minute",
+        caption = "1h",
+        style = "button",
+        toggled = false,
+    }
+
+    local selected_scale = get_selected_scale(player)
+    local scale_buttons = {
+        second = scale_button_1m,
+        ten_second = scale_button_10m,
+        ten_minute = scale_button_1h,
+    }
+    for key, btn in pairs(scale_buttons) do
+        btn.toggled = (key == selected_scale)
+    end
+    player_data.trading_list_state.scale_buttons = scale_buttons
 
     local list_frame = frame.add {
         type = "frame",
@@ -677,6 +770,23 @@ function M.handle_series_toggle(player, kind, item_name, state)
         selection[kind][item_name] = nil
     end
     update_chart(player)
+    update_list(player)
+end
+
+local function update_scale_buttons(player, selected_scale)
+    local state = get_list_state(player)
+    if not state or not state.scale_buttons then return end
+    for key, btn in pairs(state.scale_buttons) do
+        if btn and btn.valid then
+            btn.toggled = (key == selected_scale)
+        end
+    end
+end
+
+function M.handle_scale_button(player, scale_key)
+    set_selected_scale(player, scale_key)
+    update_scale_buttons(player, scale_key)
+    recreate_chart_panels(player)
     update_list(player)
 end
 

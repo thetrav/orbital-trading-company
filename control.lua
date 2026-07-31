@@ -437,6 +437,13 @@ script.on_event(defines.events.on_gui_click, function(event)
         return
     end
 
+    local scale_key = string.match(event.element.name, "^otc_trading_scale_(.+)$")
+    if scale_key then
+        local player = game.get_player(event.player_index)
+        if player then trading_gui.handle_scale_button(player, scale_key) end
+        return
+    end
+
     if event.element.name == "otc_expand_buy_button" then
         local player = game.get_player(event.player_index)
         if not player then return end

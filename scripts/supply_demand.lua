@@ -3,7 +3,6 @@ local M = {}
 local MARKET_PERIOD = 10
 local SENSITIVITY = 0.01
 local DECAY = 0.95
-local MAX_OFFSET_RATIO = 0.5
 
 function M.init()
     storage.supply_demand = {
@@ -56,10 +55,6 @@ function M.end_period()
         local current_offset = offsets[item_name] or 0
         local new_offset = current_offset + demand * SENSITIVITY
         new_offset = new_offset * DECAY
-
-        local base_price = storage.prices and storage.prices[item_name] or 100
-        local max_offset = base_price * MAX_OFFSET_RATIO
-        new_offset = math.max(-max_offset, math.min(max_offset, new_offset))
 
         if math.abs(new_offset) < 0.01 then
             new_offset = 0
