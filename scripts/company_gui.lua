@@ -24,28 +24,32 @@ function M.open(player)
     local existing = player.gui.screen.otc_company_frame
     if existing then return end
 
-    local frame = player.gui.screen.add {
+    local frame = player.gui.screen.add{
         type = "frame",
         name = "otc_company_frame",
         direction = "vertical",
-        caption = "Company Management",
     }
     frame.auto_center = true
     frame.style.padding = 12
 
-    local title_flow = frame.add { type = "flow", direction = "horizontal" }
-    title_flow.style.vertical_align = "center"
-    title_flow.add {
-        type = "label",
-        style = "frame_title",
-        caption = "Orbital Trading Company",
-        ignored_by_interaction = true,
+    local titlebar = frame.add{
+        type = "flow",
+        direction = "horizontal",
     }
-    
-    local spacer = title_flow.add { type = "empty-widget", style = "draggable_space" }
-    spacer.style.height = 24
-    spacer.style.horizontally_stretchable = true
-    title_flow.add {
+    titlebar.drag_target = frame
+
+    titlebar.add{
+        type = "label",
+        caption = "Company Management",
+        style = "frame_title",
+    }
+
+    titlebar.add{
+        type = "empty-widget",
+        style = "draggable_space_header",
+    }.style.horizontally_stretchable = true
+
+    titlebar.add{
         type = "sprite-button",
         name = "otc_company_close",
         sprite = "utility/close",
@@ -64,7 +68,7 @@ function M.open(player)
     else
         frame.add {
             type = "label",
-            caption = "Create a new company:",
+            caption = "Found a new company:",
             style = "bold_label",
         }
         local create_flow = frame.add { type = "flow", name = "otc_company_create_flow", direction = "horizontal" }
