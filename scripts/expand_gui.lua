@@ -303,6 +303,18 @@ function M.handle_buy_expansion(player)
         return
     end
 
+    if shape == "orbital_station" then
+        local company_force = player.force.name
+        if storage.station_forces then
+            for _, force in pairs(storage.station_forces) do
+                if force == company_force then
+                    player.print("Your company already has an orbital station!")
+                    return
+                end
+            end
+        end
+    end
+
     local company = storage.companies and storage.companies[player_data.company]
     local credits = company and company.credits or 0
     local cost = shape == "hub" and HUB_COST
