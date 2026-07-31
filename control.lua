@@ -68,7 +68,7 @@ local function build_starting_room(surface)
     local monitor = surface.create_entity{
         name = "otc-company-monitor",
         position = {4, 4},
-        force = NAUVIS_FORCE,
+        force = "player",
         icon = { type = "space-location", name = "nauvis" },
     }
     if monitor then
@@ -263,22 +263,18 @@ script.on_event(defines.events.on_built_entity, function(event)
     sell_chest.register(event.created_entity)
 end)
 
-script.on_event(defines.events.on_selected_entity_changed, function(event)
-    local player = game.get_player(event.player_index)
-    if not player then return end
-    local entity = player.selected
-    if not entity or not entity.valid then return end
-    if entity.name == "otc-company-monitor" then
-        company_gui.open(player)
-    end
-end)
-
 script.on_event(defines.events.on_gui_opened, function(event)
     local entity = event.entity
     local player = game.get_player(event.player_index)
     if not entity or not entity.valid or not player then return end
 
     if platform_gates.try_open_gate_computer(entity, player, expand_gui) then
+        return
+    end
+
+    if entity.name == "otc-company-monitor" then
+        player.opened = nil
+        company_gui.open(player)
         return
     end
 
