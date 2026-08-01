@@ -1,71 +1,54 @@
-local M = {}
+-- Shape definition captured from the game.
+-- Re-capture in game with: /otc-capture-shape water_connection
+-- Coordinates are shape-local; the canonical orientation is a gate on the
+-- west edge with the room extending east. See README.md "Capturing shapes".
+local runs = require("scripts.shape_runs")
 
-local function side_is_vertical(s)
-    return s == "east" or s == "west"
-end
-
-function M.get_positions(cx, cy, conn_side, gate_pos)
-    local tiles = {}
-    local walls = {}
-
-    for x = cx - 2, cx + 2 do
-        for y = cy - 2, cy + 2 do
-            table.insert(tiles, {x, y})
-        end
-    end
-
-    for y = cy - 3, cy + 3 do
-        table.insert(tiles, {cx - 3, y})
-        if not (conn_side == "west" and y == cy) then
-            table.insert(walls, {cx - 3, y})
-        end
-        table.insert(tiles, {cx + 3, y})
-        if not (conn_side == "east" and y == cy) then
-            table.insert(walls, {cx + 3, y})
-        end
-    end
-
-    for x = cx - 3, cx + 3 do
-        table.insert(tiles, {x, cy - 3})
-        if not (conn_side == "south" and x == cx) then
-            table.insert(walls, {x, cy - 3})
-        end
-        table.insert(tiles, {x, cy + 3})
-        if not (conn_side == "north" and x == cx) then
-            table.insert(walls, {x, cy + 3})
-        end
-    end
-
-    local conn_gx = cx + (conn_side == "east" and 3 or conn_side == "west" and -3 or 0)
-    local conn_gy = cy + (conn_side == "north" and 3 or conn_side == "south" and -3 or 0)
-
-    if side_is_vertical(conn_side) then
-        local s = math.min(gate_pos.x, conn_gx) + 1
-        local e = math.max(gate_pos.x, conn_gx) - 1
-        for x = s, e do
-            table.insert(tiles, {x, gate_pos.y})
-            table.insert(tiles, {x, gate_pos.y + 1})
-            table.insert(tiles, {x, gate_pos.y - 1})
-            table.insert(walls, {x, gate_pos.y + 1})
-            table.insert(walls, {x, gate_pos.y - 1})
-        end
-    else
-        local s = math.min(gate_pos.y, conn_gy) + 1
-        local e = math.max(gate_pos.y, conn_gy) - 1
-        for y = s, e do
-            table.insert(tiles, {gate_pos.x, y})
-            table.insert(tiles, {gate_pos.x + 1, y})
-            table.insert(tiles, {gate_pos.x - 1, y})
-            table.insert(walls, {gate_pos.x + 1, y})
-            table.insert(walls, {gate_pos.x - 1, y})
-        end
-    end
-
-    return tiles, walls
-end
-
-function M.get_bounding_box(cx, cy)
-    return {{cx - 4, cy - 4}, {cx + 4, cy + 4}}
-end
-
-return M
+return {
+    format = 1,
+    name = "water_connection",
+    clear_area = true,
+    connection = { position = { x = -3, y = 0 }, side = "west", gap = 2, connector = true },
+    clearance_box = { { -4, -4 }, { 4, 4 } },
+    tile_layers = {
+        {
+            name = "otc-platform",
+            correct = false,
+            tiles = runs.expand {
+                { -3, -3, 3 },
+                { -2, -3, 3 },
+                { -1, -3, 3 },
+                { 0, -3, 3 },
+                { 1, -3, 3 },
+                { 2, -3, 3 },
+                { 3, -3, 3 },
+            },
+        },
+    },
+    entities = {
+        { name = "otc-platform-wall", position = { -2.5, -2.5 } },
+        { name = "otc-platform-wall", position = { 3.5, -2.5 } },
+        { name = "otc-platform-wall", position = { -2.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 3.5, -1.5 } },
+        { name = "otc-platform-wall", position = { -2.5, -0.5 } },
+        { name = "otc-platform-wall", position = { 3.5, -0.5 } },
+        { name = "otc-platform-wall", position = { 3.5, 0.5 } },
+        { name = "otc-platform-wall", position = { -2.5, 1.5 } },
+        { name = "otc-platform-wall", position = { 3.5, 1.5 } },
+        { name = "otc-platform-wall", position = { -2.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 3.5, 2.5 } },
+        { name = "otc-platform-wall", position = { -2.5, 3.5 } },
+        { name = "otc-platform-wall", position = { 3.5, 3.5 } },
+        { name = "otc-platform-wall", position = { -1.5, -2.5 } },
+        { name = "otc-platform-wall", position = { -1.5, 3.5 } },
+        { name = "otc-platform-wall", position = { -0.5, -2.5 } },
+        { name = "otc-platform-wall", position = { -0.5, 3.5 } },
+        { name = "otc-platform-wall", position = { 0.5, -2.5 } },
+        { name = "otc-platform-wall", position = { 0.5, 3.5 } },
+        { name = "otc-platform-wall", position = { 1.5, -2.5 } },
+        { name = "otc-platform-wall", position = { 1.5, 3.5 } },
+        { name = "otc-platform-wall", position = { 2.5, -2.5 } },
+        { name = "otc-platform-wall", position = { 2.5, 3.5 } },
+        { name = "otc-water-pump", position = { 0.5, 0.5 }, direction = 4, role = "pump" },
+    },
+}

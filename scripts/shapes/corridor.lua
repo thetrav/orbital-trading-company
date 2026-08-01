@@ -1,100 +1,91 @@
-local M = {}
+-- Shape definition captured from the game.
+-- Re-capture in game with: /otc-capture-shape corridor
+-- Coordinates are shape-local; the canonical orientation is a gate on the
+-- west edge with the room extending east. See README.md "Capturing shapes".
+local runs = require("scripts.shape_runs")
 
-function M.get_positions(gate_pos, dir)
-    local tiles = {}
-    local walls = {}
-
-    local gx, gy = gate_pos.x, gate_pos.y
-
-    if dir == "east" or dir == "west" then
-        local s = (dir == "east") and 1 or -1
-        local cgx = gx + 3 * s
-        local fgx = gx + 24 * s
-        local cx = gx + 25 * s
-
-        table.insert(tiles, {gx + s, gy}); table.insert(tiles, {gx + 2*s, gy})
-        table.insert(tiles, {gx + s, gy+1}); table.insert(tiles, {gx + s, gy-1})
-        table.insert(tiles, {gx + 2*s, gy+1}); table.insert(tiles, {gx + 2*s, gy-1})
-        table.insert(walls, {gx + s, gy+1}); table.insert(walls, {gx + s, gy-1})
-        table.insert(walls, {gx + 2*s, gy+1}); table.insert(walls, {gx + 2*s, gy-1})
-
-        for y = gy-2, gy+2 do
-            table.insert(tiles, {cgx, y})
-            if y ~= gy then table.insert(walls, {cgx, y}) end
-        end
-
-        local lo = math.min(cgx, fgx)
-        local hi = math.max(cgx, fgx)
-        for x = lo + 1, hi - 1 do
-            for y = gy-1, gy+1 do table.insert(tiles, {x, y}) end
-        end
-
-        for x = lo, hi do
-            table.insert(tiles, {x, gy+2}); table.insert(tiles, {x, gy-2})
-            table.insert(walls, {x, gy+2}); table.insert(walls, {x, gy-2})
-        end
-
-        for y = gy-2, gy+2 do
-            table.insert(tiles, {fgx, y})
-            if y ~= gy then table.insert(walls, {fgx, y}) end
-        end
-
-        table.insert(tiles, {cx, gy})
-        table.insert(tiles, {cx, gy+1})
-        table.insert(tiles, {cx, gy-1})
-        table.insert(walls, {cx, gy+1})
-        table.insert(walls, {cx, gy-1})
-
-    else
-        local s = (dir == "north") and 1 or -1
-        local cgy = gy + 3 * s
-        local fgy = gy + 24 * s
-        local cy = gy + 25 * s
-
-        table.insert(tiles, {gx, gy + s}); table.insert(tiles, {gx, gy + 2*s})
-        table.insert(tiles, {gx+1, gy + s}); table.insert(tiles, {gx-1, gy + s})
-        table.insert(tiles, {gx+1, gy + 2*s}); table.insert(tiles, {gx-1, gy + 2*s})
-        table.insert(walls, {gx+1, gy + s}); table.insert(walls, {gx-1, gy + s})
-        table.insert(walls, {gx+1, gy + 2*s}); table.insert(walls, {gx-1, gy + 2*s})
-
-        for x = gx-2, gx+2 do
-            table.insert(tiles, {x, cgy})
-            if x ~= gx then table.insert(walls, {x, cgy}) end
-        end
-
-        local lo = math.min(cgy, fgy)
-        local hi = math.max(cgy, fgy)
-        for y = lo + 1, hi - 1 do
-            for x = gx-1, gx+1 do table.insert(tiles, {x, y}) end
-        end
-
-        for y = lo, hi do
-            table.insert(tiles, {gx+2, y}); table.insert(tiles, {gx-2, y})
-            table.insert(walls, {gx+2, y}); table.insert(walls, {gx-2, y})
-        end
-
-        for x = gx-2, gx+2 do
-            table.insert(tiles, {x, fgy})
-            if x ~= gx then table.insert(walls, {x, fgy}) end
-        end
-
-        table.insert(tiles, {gx, cy})
-        table.insert(tiles, {gx+1, cy})
-        table.insert(tiles, {gx-1, cy})
-        table.insert(walls, {gx+1, cy})
-        table.insert(walls, {gx-1, cy})
-    end
-
-    return tiles, walls
-end
-
-function M.get_bounding_box(gate_pos, dir)
-    local gx, gy = gate_pos.x, gate_pos.y
-    if dir == "east" then return {{gx + 2, gy - 2}, {gx + 25, gy + 2}}
-    elseif dir == "west" then return {{gx - 25, gy - 2}, {gx - 2, gy + 2}}
-    elseif dir == "north" then return {{gx - 2, gy + 2}, {gx + 2, gy + 25}}
-    elseif dir == "south" then return {{gx - 2, gy - 25}, {gx + 2, gy - 2}}
-    end
-end
-
-return M
+return {
+    format = 1,
+    name = "corridor",
+    hook = "room_gates",
+    connection = { position = { x = 0, y = 0 }, side = "west", gap = 0, connector = false },
+    clearance_box = { { 2, -2 }, { 25, 2 } },
+    tile_layers = {
+        {
+            name = "otc-platform",
+            correct = false,
+            tiles = runs.expand {
+                { -2, 3, 24 },
+                { -1, 1, 25 },
+                { 0, 1, 25 },
+                { 1, 1, 25 },
+                { 2, 3, 24 },
+            },
+        },
+    },
+    entities = {
+        { name = "otc-platform-wall", position = { 1.5, 1.5 } },
+        { name = "otc-platform-wall", position = { 1.5, -0.5 } },
+        { name = "otc-platform-wall", position = { 2.5, 1.5 } },
+        { name = "otc-platform-wall", position = { 2.5, -0.5 } },
+        { name = "otc-platform-wall", position = { 3.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 3.5, -0.5 } },
+        { name = "otc-platform-wall", position = { 3.5, 1.5 } },
+        { name = "otc-platform-wall", position = { 3.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 4.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 4.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 5.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 5.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 6.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 6.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 7.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 7.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 8.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 8.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 9.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 9.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 10.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 10.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 11.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 11.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 12.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 12.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 13.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 13.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 14.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 14.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 15.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 15.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 16.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 17.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 17.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 18.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 18.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 19.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 19.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 20.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 20.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 21.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 21.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 22.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 22.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 23.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 23.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 24.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 24.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 24.5, -0.5 } },
+        { name = "otc-platform-wall", position = { 24.5, 1.5 } },
+        { name = "otc-platform-wall", position = { 25.5, 1.5 } },
+        { name = "otc-platform-wall", position = { 25.5, -0.5 } },
+        { name = "gate", position = { 3.5, 0.5 }, role = "gate", side = "west", skip_create = true },
+        { name = "gate", position = { 24.5, 0.5 }, role = "gate", side = "east", skip_create = true },
+        {
+            name = "otc-gate-computer",
+            position = { 25.5, 0.5 },
+            role = "computer",
+            side = "east",
+            skip_create = true,
+        },
+    },
+}

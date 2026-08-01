@@ -1,4 +1,6 @@
 local platform_gates = require("scripts.platform_gates")
+local platform = require("scripts.platform")
+local shape_capture = require("scripts.shape_capture")
 local pricing = require("scripts.pricing")
 local market_gui = require("scripts.market_gui")
 local expand_gui = require("scripts.expand_gui")
@@ -30,60 +32,7 @@ local function clear_enemies()
 end
 
 local function build_starting_room(surface)
-    local R = 5
-    local WR = R + 1
-
-    local entities = surface.find_entities_filtered{area = {{-WR, -WR}, {WR, WR}}}
-    for _, entity in ipairs(entities) do
-        if entity.valid then
-            entity.destroy()
-        end
-    end
-
-    local tiles = {}
-    for x = -WR, WR do
-        for y = -WR, WR do
-            if (math.abs(x) <= R and math.abs(y) <= R) or math.abs(x) == WR or math.abs(y) == WR then
-                table.insert(tiles, {name = "otc-platform", position = {x, y}})
-            end
-        end
-    end
-    surface.set_tiles(tiles, true)
-    surface.destroy_decoratives{area = {{-WR, -WR}, {WR, WR}}}
-
-    for x = -WR, WR do
-        for y = -WR, WR do
-            if math.abs(x) == WR or math.abs(y) == WR then
-                if not platform_gates.is_entity_position(x, y) then
-                    local wall = surface.create_entity{
-                        name = "otc-platform-wall",
-                        position = {x, y},
-                        force = NAUVIS_FORCE,
-                    }
-                    if wall then
-                        wall.minable = false
-                        wall.destructible = false
-                    end
-                end
-            end
-        end
-    end
-
-    platform_gates.init_gates_for_surface(surface)
-    platform_gates.place_gate_controls(surface, NAUVIS_FORCE)
-
-    local monitor = surface.create_entity{
-        name = "otc-company-monitor",
-        position = {4, 4},
-        force = "player",
-        icon = { type = "space-location", name = "nauvis" },
-    }
-    if monitor then
-        monitor.minable = false
-        monitor.destructible = false
-        local behavior = monitor.get_or_create_control_behavior()
-        behavior.set_message(-1, { text = "Company Management" })
-    end
+    platform.build_shape(surface, "nauvis_starting_room", {x = 0, y = 0}, NAUVIS_FORCE)
 end
 
 local function ensure_company_setup()
@@ -219,6 +168,7 @@ script.on_init(function()
 
     supply_demand.init()
     trading_history.init()
+    shape_capture.init()
     ensure_company_setup()
 
     clear_enemies()
@@ -244,6 +194,16 @@ end)
 
 script.on_load(function()
     storage.prices = pricing.calculate()
+end)
+
+shape_capture.register_commands()
+
+script.on_event(defines.events.on_player_selected_area, function(event)
+    shape_capture.on_selected_area(event, false)
+end)
+
+script.on_event(defines.events.on_player_alt_selected_area, function(event)
+    shape_capture.on_selected_area(event, true)
 end)
 
 script.on_event(defines.events.on_player_created, function(event)
@@ -310,6 +270,7 @@ script.on_nth_tick(60, function()
 end)
 
 script.on_configuration_changed(function()
+    shape_capture.init()
     ensure_company_setup()
     nauvis_industry.ensure_built()
 end)
@@ -391,7 +352,7 @@ script.on_event(defines.events.on_player_driving_changed_state, function(event)
     if station_name then
         local station = game.surfaces[station_name]
         if station then
-            player.teleport({0, 6}, station)
+            player.teleport(platform.station_arrival_position(), station)
             player.driving = false
             player.print("Teleported to orbital station.")
         end

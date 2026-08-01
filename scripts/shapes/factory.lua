@@ -1,71 +1,186 @@
-local M = {}
+-- Shape definition captured from the game.
+-- Re-capture in game with: /otc-capture-shape factory
+-- Coordinates are shape-local; the canonical orientation is a gate on the
+-- west edge with the room extending east. See README.md "Capturing shapes".
+local runs = require("scripts.shape_runs")
 
-local function side_is_vertical(s)
-    return s == "east" or s == "west"
-end
-
-function M.get_positions(cx, cy, conn_side, gate_pos)
-    local tiles = {}
-    local walls = {}
-
-    for x = cx - 14, cx + 15 do
-        for y = cy - 14, cy + 15 do
-            table.insert(tiles, {x, y})
-        end
-    end
-
-    for y = cy - 15, cy + 16 do
-        table.insert(tiles, {cx - 15, y})
-        if not (conn_side == "west" and y == cy) then
-            table.insert(walls, {cx - 15, y})
-        end
-        table.insert(tiles, {cx + 16, y})
-        if not (conn_side == "east" and y == cy) then
-            table.insert(walls, {cx + 16, y})
-        end
-    end
-
-    for x = cx - 15, cx + 16 do
-        table.insert(tiles, {x, cy - 15})
-        if not (conn_side == "south" and x == cx) then
-            table.insert(walls, {x, cy - 15})
-        end
-        table.insert(tiles, {x, cy + 16})
-        if not (conn_side == "north" and x == cx) then
-            table.insert(walls, {x, cy + 16})
-        end
-    end
-
-    local conn_gx = cx + (conn_side == "east" and 16 or conn_side == "west" and -15 or 0)
-    local conn_gy = cy + (conn_side == "north" and 16 or conn_side == "south" and -15 or 0)
-
-    if side_is_vertical(conn_side) then
-        local s = math.min(gate_pos.x, conn_gx) + 1
-        local e = math.max(gate_pos.x, conn_gx) - 1
-        for x = s, e do
-            table.insert(tiles, {x, gate_pos.y})
-            table.insert(tiles, {x, gate_pos.y + 1})
-            table.insert(tiles, {x, gate_pos.y - 1})
-            table.insert(walls, {x, gate_pos.y + 1})
-            table.insert(walls, {x, gate_pos.y - 1})
-        end
-    else
-        local s = math.min(gate_pos.y, conn_gy) + 1
-        local e = math.max(gate_pos.y, conn_gy) - 1
-        for y = s, e do
-            table.insert(tiles, {gate_pos.x, y})
-            table.insert(tiles, {gate_pos.x + 1, y})
-            table.insert(tiles, {gate_pos.x - 1, y})
-            table.insert(walls, {gate_pos.x + 1, y})
-            table.insert(walls, {gate_pos.x - 1, y})
-        end
-    end
-
-    return tiles, walls
-end
-
-function M.get_bounding_box(cx, cy)
-    return {{cx - 16, cy - 16}, {cx + 17, cy + 17}}
-end
-
-return M
+return {
+    format = 1,
+    name = "factory",
+    hook = "room_gates",
+    connection = { position = { x = -16, y = 0 }, side = "west", gap = 3, connector = true },
+    clearance_box = { { -17, -16 }, { 16, 16 } },
+    tile_layers = {
+        {
+            name = "otc-platform",
+            correct = false,
+            tiles = runs.expand {
+                { -16, -16, 16 },
+                { -15, -16, 16 },
+                { -14, -16, 16 },
+                { -13, -16, 16 },
+                { -12, -16, 16 },
+                { -11, -16, 16 },
+                { -10, -16, 16 },
+                { -9, -16, 16 },
+                { -8, -16, 16 },
+                { -7, -16, 16 },
+                { -6, -16, 16 },
+                { -5, -16, 16 },
+                { -4, -16, 16 },
+                { -3, -16, 16 },
+                { -2, -16, 16 },
+                { -1, -17, 16 },
+                { 0, -17, 16 },
+                { 1, -17, 16 },
+                { 2, -16, 16 },
+                { 3, -16, 16 },
+                { 4, -16, 16 },
+                { 5, -16, 16 },
+                { 6, -16, 16 },
+                { 7, -16, 16 },
+                { 8, -16, 16 },
+                { 9, -16, 16 },
+                { 10, -16, 16 },
+                { 11, -16, 16 },
+                { 12, -16, 16 },
+                { 13, -16, 16 },
+                { 14, -16, 16 },
+                { 15, -16, 16 },
+                { 16, -16, 16 },
+            },
+        },
+    },
+    entities = {
+        { name = "otc-platform-wall", position = { -15.5, -15.5 } },
+        { name = "otc-platform-wall", position = { 16.5, -15.5 } },
+        { name = "otc-platform-wall", position = { -15.5, -14.5 } },
+        { name = "otc-platform-wall", position = { 16.5, -14.5 } },
+        { name = "otc-platform-wall", position = { -15.5, -13.5 } },
+        { name = "otc-platform-wall", position = { 16.5, -13.5 } },
+        { name = "otc-platform-wall", position = { -15.5, -12.5 } },
+        { name = "otc-platform-wall", position = { 16.5, -12.5 } },
+        { name = "otc-platform-wall", position = { -15.5, -11.5 } },
+        { name = "otc-platform-wall", position = { 16.5, -11.5 } },
+        { name = "otc-platform-wall", position = { -15.5, -10.5 } },
+        { name = "otc-platform-wall", position = { 16.5, -10.5 } },
+        { name = "otc-platform-wall", position = { -15.5, -9.5 } },
+        { name = "otc-platform-wall", position = { 16.5, -9.5 } },
+        { name = "otc-platform-wall", position = { -15.5, -8.5 } },
+        { name = "otc-platform-wall", position = { 16.5, -8.5 } },
+        { name = "otc-platform-wall", position = { -15.5, -7.5 } },
+        { name = "otc-platform-wall", position = { 16.5, -7.5 } },
+        { name = "otc-platform-wall", position = { -15.5, -6.5 } },
+        { name = "otc-platform-wall", position = { 16.5, -6.5 } },
+        { name = "otc-platform-wall", position = { -15.5, -5.5 } },
+        { name = "otc-platform-wall", position = { 16.5, -5.5 } },
+        { name = "otc-platform-wall", position = { -15.5, -4.5 } },
+        { name = "otc-platform-wall", position = { 16.5, -4.5 } },
+        { name = "otc-platform-wall", position = { -15.5, -3.5 } },
+        { name = "otc-platform-wall", position = { 16.5, -3.5 } },
+        { name = "otc-platform-wall", position = { -15.5, -2.5 } },
+        { name = "otc-platform-wall", position = { 16.5, -2.5 } },
+        { name = "otc-platform-wall", position = { -15.5, -1.5 } },
+        { name = "otc-platform-wall", position = { 16.5, -1.5 } },
+        { name = "otc-platform-wall", position = { -15.5, -0.5 } },
+        { name = "otc-platform-wall", position = { 16.5, -0.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 0.5 } },
+        { name = "otc-platform-wall", position = { -15.5, 1.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 1.5 } },
+        { name = "otc-platform-wall", position = { -15.5, 2.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 2.5 } },
+        { name = "otc-platform-wall", position = { -15.5, 3.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 3.5 } },
+        { name = "otc-platform-wall", position = { -15.5, 4.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 4.5 } },
+        { name = "otc-platform-wall", position = { -15.5, 5.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 5.5 } },
+        { name = "otc-platform-wall", position = { -15.5, 6.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 6.5 } },
+        { name = "otc-platform-wall", position = { -15.5, 7.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 7.5 } },
+        { name = "otc-platform-wall", position = { -15.5, 8.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 8.5 } },
+        { name = "otc-platform-wall", position = { -15.5, 9.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 9.5 } },
+        { name = "otc-platform-wall", position = { -15.5, 10.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 10.5 } },
+        { name = "otc-platform-wall", position = { -15.5, 11.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 11.5 } },
+        { name = "otc-platform-wall", position = { -15.5, 12.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 12.5 } },
+        { name = "otc-platform-wall", position = { -15.5, 13.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 13.5 } },
+        { name = "otc-platform-wall", position = { -15.5, 14.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 14.5 } },
+        { name = "otc-platform-wall", position = { -15.5, 15.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 15.5 } },
+        { name = "otc-platform-wall", position = { -15.5, 16.5 } },
+        { name = "otc-platform-wall", position = { 16.5, 16.5 } },
+        { name = "otc-platform-wall", position = { -14.5, -15.5 } },
+        { name = "otc-platform-wall", position = { -14.5, 16.5 } },
+        { name = "otc-platform-wall", position = { -13.5, -15.5 } },
+        { name = "otc-platform-wall", position = { -13.5, 16.5 } },
+        { name = "otc-platform-wall", position = { -12.5, -15.5 } },
+        { name = "otc-platform-wall", position = { -12.5, 16.5 } },
+        { name = "otc-platform-wall", position = { -11.5, -15.5 } },
+        { name = "otc-platform-wall", position = { -11.5, 16.5 } },
+        { name = "otc-platform-wall", position = { -10.5, -15.5 } },
+        { name = "otc-platform-wall", position = { -10.5, 16.5 } },
+        { name = "otc-platform-wall", position = { -9.5, -15.5 } },
+        { name = "otc-platform-wall", position = { -9.5, 16.5 } },
+        { name = "otc-platform-wall", position = { -8.5, -15.5 } },
+        { name = "otc-platform-wall", position = { -8.5, 16.5 } },
+        { name = "otc-platform-wall", position = { -7.5, -15.5 } },
+        { name = "otc-platform-wall", position = { -7.5, 16.5 } },
+        { name = "otc-platform-wall", position = { -6.5, -15.5 } },
+        { name = "otc-platform-wall", position = { -6.5, 16.5 } },
+        { name = "otc-platform-wall", position = { -5.5, -15.5 } },
+        { name = "otc-platform-wall", position = { -5.5, 16.5 } },
+        { name = "otc-platform-wall", position = { -4.5, -15.5 } },
+        { name = "otc-platform-wall", position = { -4.5, 16.5 } },
+        { name = "otc-platform-wall", position = { -3.5, -15.5 } },
+        { name = "otc-platform-wall", position = { -3.5, 16.5 } },
+        { name = "otc-platform-wall", position = { -2.5, -15.5 } },
+        { name = "otc-platform-wall", position = { -2.5, 16.5 } },
+        { name = "otc-platform-wall", position = { -1.5, -15.5 } },
+        { name = "otc-platform-wall", position = { -1.5, 16.5 } },
+        { name = "otc-platform-wall", position = { -0.5, -15.5 } },
+        { name = "otc-platform-wall", position = { -0.5, 16.5 } },
+        { name = "otc-platform-wall", position = { 0.5, -15.5 } },
+        { name = "otc-platform-wall", position = { 0.5, 16.5 } },
+        { name = "otc-platform-wall", position = { 1.5, -15.5 } },
+        { name = "otc-platform-wall", position = { 1.5, 16.5 } },
+        { name = "otc-platform-wall", position = { 2.5, -15.5 } },
+        { name = "otc-platform-wall", position = { 2.5, 16.5 } },
+        { name = "otc-platform-wall", position = { 3.5, -15.5 } },
+        { name = "otc-platform-wall", position = { 3.5, 16.5 } },
+        { name = "otc-platform-wall", position = { 4.5, -15.5 } },
+        { name = "otc-platform-wall", position = { 4.5, 16.5 } },
+        { name = "otc-platform-wall", position = { 5.5, -15.5 } },
+        { name = "otc-platform-wall", position = { 5.5, 16.5 } },
+        { name = "otc-platform-wall", position = { 6.5, -15.5 } },
+        { name = "otc-platform-wall", position = { 6.5, 16.5 } },
+        { name = "otc-platform-wall", position = { 7.5, -15.5 } },
+        { name = "otc-platform-wall", position = { 7.5, 16.5 } },
+        { name = "otc-platform-wall", position = { 8.5, -15.5 } },
+        { name = "otc-platform-wall", position = { 8.5, 16.5 } },
+        { name = "otc-platform-wall", position = { 9.5, -15.5 } },
+        { name = "otc-platform-wall", position = { 9.5, 16.5 } },
+        { name = "otc-platform-wall", position = { 10.5, -15.5 } },
+        { name = "otc-platform-wall", position = { 10.5, 16.5 } },
+        { name = "otc-platform-wall", position = { 11.5, -15.5 } },
+        { name = "otc-platform-wall", position = { 11.5, 16.5 } },
+        { name = "otc-platform-wall", position = { 12.5, -15.5 } },
+        { name = "otc-platform-wall", position = { 12.5, 16.5 } },
+        { name = "otc-platform-wall", position = { 13.5, -15.5 } },
+        { name = "otc-platform-wall", position = { 13.5, 16.5 } },
+        { name = "otc-platform-wall", position = { 14.5, -15.5 } },
+        { name = "otc-platform-wall", position = { 14.5, 16.5 } },
+        { name = "otc-platform-wall", position = { 15.5, -15.5 } },
+        { name = "otc-platform-wall", position = { 15.5, 16.5 } },
+        { name = "otc-platform-wall", position = { -16.5, -0.5 } },
+        { name = "otc-platform-wall", position = { -16.5, 1.5 } },
+        { name = "gate", position = { -15.5, 0.5 }, role = "gate", side = "west", skip_create = true },
+    },
+}

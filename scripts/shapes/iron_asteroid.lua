@@ -1,107 +1,73 @@
-local M = {}
+-- Shape definition captured from the game.
+-- Re-capture in game with: /otc-capture-shape iron_asteroid
+-- Coordinates are shape-local; the canonical orientation is a gate on the
+-- west edge with the room extending east. See README.md "Capturing shapes".
+local runs = require("scripts.shape_runs")
 
-local TILE = "dirt-7"
-local GAP = 2
-local R = 7
-
-local function get_center(gate_pos, dir)
-    local gx, gy = gate_pos.x, gate_pos.y
-    if dir == "east" then return gx + GAP + R, gy
-    elseif dir == "west" then return gx - GAP - R, gy
-    elseif dir == "north" then return gx, gy + GAP + R
-    elseif dir == "south" then return gx, gy - GAP - R
-    end
-end
-
-function M.get_positions(gate_pos, dir)
-    local tiles = {}
-    local resources = {}
-    local walls = {}
-
-    local cx, cy = get_center(gate_pos, dir)
-    if not cx then return tiles, resources, walls end
-
-    for x = cx - R, cx + R do
-        for y = cy - R, cy + R do
-            local dx = (x - cx) / R
-            local dy = (y - cy) / R
-            if dx * dx + dy * dy < 1 then
-                table.insert(tiles, {x, y, TILE})
-            end
-        end
-    end
-
-    local rir, rir2 = 2, 2
-    for x = cx - rir, cx + rir do
-        for y = cy - rir2, cy + rir2 do
-            local dx = (x - cx) / (rir + 0.5)
-            local dy = (y - cy) / (rir2 + 0.5)
-            if dx * dx + dy * dy <= 1 then
-                table.insert(resources, {x, y, "iron-ore", 5000000})
-            end
-        end
-    end
-
-    local ex, wx, ey, wy
-    if dir == "east" then
-        ex, wx = cx - R + 1, cx - R
-        ey, wy = cy, cy
-    elseif dir == "west" then
-        ex, wx = cx + R - 1, cx + R
-        ey, wy = cy, cy
-    elseif dir == "north" then
-        ex, wx = cx, cx
-        ey, wy = cy - R + 1, cy - R
-    elseif dir == "south" then
-        ex, wx = cx, cx
-        ey, wy = cy + R - 1, cy + R
-    end
-
-    if dir == "east" or dir == "west" then
-        table.insert(walls, {ex, ey + 1})
-        table.insert(walls, {wx, wy + 1})
-        table.insert(walls, {ex, ey - 1})
-        table.insert(walls, {wx, wy - 1})
-        table.insert(tiles, {ex, ey, "otc-platform"})
-        table.insert(tiles, {wx, wy, "otc-platform"})
-        table.insert(tiles, {ex, ey + 1, "otc-platform"})
-        table.insert(tiles, {wx, wy + 1, "otc-platform"})
-        table.insert(tiles, {ex, ey - 1, "otc-platform"})
-        table.insert(tiles, {wx, wy - 1, "otc-platform"})
-    else
-        table.insert(walls, {ex + 1, ey})
-        table.insert(walls, {ex + 1, wy})
-        table.insert(walls, {ex - 1, ey})
-        table.insert(walls, {ex - 1, wy})
-        table.insert(tiles, {ex, ey, "otc-platform"})
-        table.insert(tiles, {ex, wy, "otc-platform"})
-        table.insert(tiles, {ex + 1, ey, "otc-platform"})
-        table.insert(tiles, {ex + 1, wy, "otc-platform"})
-        table.insert(tiles, {ex - 1, ey, "otc-platform"})
-        table.insert(tiles, {ex - 1, wy, "otc-platform"})
-    end
-
-    return tiles, resources, walls
-end
-
-function M.get_gate_pos(gate_pos, dir)
-    local cx, cy = get_center(gate_pos, dir)
-    if not cx then return nil end
-    if dir == "east" then return {x = cx - R + 1, y = cy}
-    elseif dir == "west" then return {x = cx + R - 1, y = cy}
-    elseif dir == "north" then return {x = cx, y = cy - R + 1}
-    elseif dir == "south" then return {x = cx, y = cy + R - 1}
-    end
-end
-
-function M.get_bounding_box(gate_pos, dir)
-    local cx, cy = get_center(gate_pos, dir)
-    if not cx then return nil end
-    if dir == "east" then return {{cx - R, cy - R + 1}, {cx + R - 1, cy + R - 1}}
-    elseif dir == "west" then return {{cx - R + 1, cy - R + 1}, {cx + R, cy + R - 1}}
-    elseif dir == "north" then return {{cx - R + 1, cy - R}, {cx + R - 1, cy + R - 1}}
-    elseif dir == "south" then return {{cx - R + 1, cy - R + 1}, {cx + R - 1, cy + R}}
-    end
-end
-
-return M
+return {
+    format = 1,
+    name = "iron_asteroid",
+    hook = "room_gates",
+    connection = { position = { x = 0, y = 0 }, side = "west", gap = 0, connector = false },
+    clearance_box = { { 2, -6 }, { 15, 6 } },
+    tile_layers = {
+        {
+            name = "dirt-7",
+            correct = true,
+            tiles = runs.expand {
+                { -6, 6, 12 },
+                { -5, 5, 13 },
+                { -4, 4, 14 },
+                { -3, 3, 15 },
+                { -2, 3, 15 },
+                { -1, 3, 15 },
+                { 0, 3, 15 },
+                { 1, 3, 15 },
+                { 2, 3, 15 },
+                { 3, 3, 15 },
+                { 4, 4, 14 },
+                { 5, 5, 13 },
+                { 6, 6, 12 },
+            },
+        },
+        {
+            name = "otc-platform",
+            correct = true,
+            tiles = runs.expand {
+                { -1, 2, 3 },
+                { 0, 2, 3 },
+                { 1, 2, 3 },
+            },
+        },
+    },
+    entities = {
+        { name = "otc-platform-wall", position = { 3.5, 1.5 } },
+        { name = "otc-platform-wall", position = { 2.5, 1.5 } },
+        { name = "otc-platform-wall", position = { 3.5, -0.5 } },
+        { name = "otc-platform-wall", position = { 2.5, -0.5 } },
+        { name = "gate", position = { 3.5, 0.5 }, role = "gate", side = "east", skip_create = true },
+    },
+    resources = {
+        { name = "iron-ore", position = { 7, -1 }, amount = 5000000 },
+        { name = "iron-ore", position = { 7, 0 }, amount = 5000000 },
+        { name = "iron-ore", position = { 7, 1 }, amount = 5000000 },
+        { name = "iron-ore", position = { 8, -2 }, amount = 5000000 },
+        { name = "iron-ore", position = { 8, -1 }, amount = 5000000 },
+        { name = "iron-ore", position = { 8, 0 }, amount = 5000000 },
+        { name = "iron-ore", position = { 8, 1 }, amount = 5000000 },
+        { name = "iron-ore", position = { 8, 2 }, amount = 5000000 },
+        { name = "iron-ore", position = { 9, -2 }, amount = 5000000 },
+        { name = "iron-ore", position = { 9, -1 }, amount = 5000000 },
+        { name = "iron-ore", position = { 9, 0 }, amount = 5000000 },
+        { name = "iron-ore", position = { 9, 1 }, amount = 5000000 },
+        { name = "iron-ore", position = { 9, 2 }, amount = 5000000 },
+        { name = "iron-ore", position = { 10, -2 }, amount = 5000000 },
+        { name = "iron-ore", position = { 10, -1 }, amount = 5000000 },
+        { name = "iron-ore", position = { 10, 0 }, amount = 5000000 },
+        { name = "iron-ore", position = { 10, 1 }, amount = 5000000 },
+        { name = "iron-ore", position = { 10, 2 }, amount = 5000000 },
+        { name = "iron-ore", position = { 11, -1 }, amount = 5000000 },
+        { name = "iron-ore", position = { 11, 0 }, amount = 5000000 },
+        { name = "iron-ore", position = { 11, 1 }, amount = 5000000 },
+    },
+}

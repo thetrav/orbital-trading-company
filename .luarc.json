@@ -14,7 +14,8 @@
     ],
     "workspace.checkThirdParty": false,
     "workspace.ignoreDir": [
-        "test"
+        "test",
+        "tools"
     ],
     "diagnostics.globals": [
         "game", "script", "remote", "commands", "rendering",

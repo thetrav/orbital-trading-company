@@ -5,6 +5,7 @@ globals = {
     "script",
     "remote",
     "commands",
+    "helpers",
     "rendering",
     "storage",
     "defines",
