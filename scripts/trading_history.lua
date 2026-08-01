@@ -17,6 +17,7 @@ function M.init()
     storage.trading_chart = storage.trading_chart or {}
     storage.trading_scale_tensecond_head = storage.trading_scale_tensecond_head or 0
     storage.trading_scale_tenminute_head = storage.trading_scale_tenminute_head or 0
+    storage.trading_scale_elapsed = storage.trading_scale_elapsed or {}
 end
 
 local function get_force_history(force_name)
@@ -179,6 +180,17 @@ local function advance_scale(scale_key)
     end
 end
 
+local function tick_scale(scale_key)
+    local scale = SCALES[scale_key]
+    storage.trading_scale_elapsed = storage.trading_scale_elapsed or {}
+    local elapsed = (storage.trading_scale_elapsed[scale_key] or 0) + 1
+    if elapsed >= scale.interval then
+        elapsed = 0
+        advance_scale(scale_key)
+    end
+    storage.trading_scale_elapsed[scale_key] = elapsed
+end
+
 function M.advance_second()
     storage.trading_history_head = (storage.trading_history_head + 1) % HISTORY_LENGTH
     local head_idx = storage.trading_history_head + 1
@@ -209,8 +221,8 @@ function M.advance_second()
         chart.data[head_idx] = reset_chart_slot(old, chart.sum)
     end
 
-    advance_scale("ten_second")
-    advance_scale("ten_minute")
+    tick_scale("ten_second")
+    tick_scale("ten_minute")
 end
 
 function M.get_chart_data(force_name, scale_key)

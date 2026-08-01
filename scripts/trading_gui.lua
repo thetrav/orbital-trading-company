@@ -2,7 +2,7 @@ local utils = require("scripts.utils")
 local item_filter = require("scripts.item_filter")
 local trading_history = require("scripts.trading_history")
 
-local charts = require("__factorio-charts__.charts")
+local chart_render = require("scripts.chart_render")
 
 local M = {}
 
@@ -13,6 +13,7 @@ local EXPENSE_COLOR = { r = 0.8, g = 0.2, b = 0.2 }
 local PROFIT_COLOR = { r = 0.9, g = 0.9, b = 0.1 }
 
 local CHART_KINDS = { "income", "expense", "profit" }
+local SCALES = { "second", "ten_second", "ten_minute" }
 
 local CHECKBOX_SIZE = 18
 local NAME_COLUMN_WIDTH = 200
@@ -60,7 +61,7 @@ end
 
 local function init_chart_surface()
     if not storage.chart_surface then
-        local surface_data = charts.surface.create("otc-trading-charts")
+        local surface_data = chart_render.create_surface("otc-trading-charts")
         storage.chart_surface = surface_data
     end
     return storage.chart_surface
@@ -72,7 +73,13 @@ local function get_chart_state(player)
     if not player_data.trading_chart_state then
         player_data.trading_chart_state = {}
     end
-    return player_data.trading_chart_state
+    local chart_state = player_data.trading_chart_state
+    for _, scale in ipairs(SCALES) do
+        if not chart_state[scale] then
+            chart_state[scale] = {}
+        end
+    end
+    return chart_state
 end
 
 local function get_selected_scale(player)
@@ -121,24 +128,12 @@ local function get_series_color_map(chart, kind, selection)
         end
         return a.name < b.name
     end)
-    local palette = charts.colors.get_series_colors()
+    local palette = chart_render.get_series_colors()
     local colors = {}
     for i, entry in ipairs(ordered) do
         colors[entry.name] = palette[((i - 1) % #palette) + 1]
     end
     return colors
-end
-
-local function update_rate_label(state, chart, kind, selection, scale_key)
-    local rate = (chart.sum[kind][TOTAL_KEY] or 0) / chart.length
-    local rate_suffix = get_rate_label(scale_key)
-    local caption = "₾" .. utils.format_number(math.floor(rate + 0.5)) .. rate_suffix
-    if kind == "profit" then
-        caption = (rate >= 0 and "+" or "") .. caption
-    end
-    state.rate_label.caption = caption
-    local color_map = get_series_color_map(chart, kind, selection)
-    state.rate_label.style.font_color = color_map[TOTAL_KEY] or GRAY_COLOR
 end
 
 local function build_chart_view(chart, kind, selection)
@@ -156,7 +151,7 @@ local function build_chart_view(chart, kind, selection)
     return data, counts, sum
 end
 
-local function render_series(state, chart, kind, selection, scale_key)
+local function render_series_on_chunk(state, chart, kind, selection, scale_key)
     destroy_render_objects(state.line_ids)
 
     local data, counts, sum = build_chart_view(chart, kind, selection)
@@ -170,17 +165,23 @@ local function render_series(state, chart, kind, selection, scale_key)
         selected_series = selection[kind],
         label_format = credits_label,
         ttl = 360,
-        viewport_width = 300,
-        viewport_height = 233,
     }
 
-    local _, line_ids = charts.render.line_graph(state.surface, state.chunk, options)
+    local line_ids = chart_render.line_graph(state.surface, state.chunk, options)
     state.line_ids = line_ids or {}
 
-    update_rate_label(state, chart, kind, selection, scale_key)
+    local rate = (chart.sum[kind][TOTAL_KEY] or 0) / chart.length
+    local rate_suffix = get_rate_label(scale_key)
+    local caption = "₾" .. utils.format_number(math.floor(rate + 0.5)) .. rate_suffix
+    if kind == "profit" then
+        caption = (rate >= 0 and "+" or "") .. caption
+    end
+    state.rate_label.caption = caption
+    local color_map = get_series_color_map(chart, kind, selection)
+    state.rate_label.style.font_color = color_map[TOTAL_KEY] or GRAY_COLOR
 end
 
-local function update_chart(player)
+local function render_all_charts(player)
     local frame = player.gui.screen.otc_trading_frame
     if not frame then return end
 
@@ -188,21 +189,27 @@ local function update_chart(player)
     if not chart_state then return end
 
     local force_name = get_selected_force(player)
-    local scale_key = get_selected_scale(player)
-    local chart = trading_history.get_chart_data(force_name, scale_key)
     local selection = get_chart_selection(player)
 
-    for _, series_key in ipairs(CHART_KINDS) do
-        local state = chart_state[series_key]
-        if state then
-            render_series(state, chart, series_key, selection, scale_key)
+    for _, scale_key in ipairs(SCALES) do
+        local chart = trading_history.get_chart_data(force_name, scale_key)
+        local scale_state = chart_state[scale_key]
+        if scale_state then
+            for _, cfg_key in ipairs(CHART_KINDS) do
+                local state = scale_state[cfg_key]
+                if state then
+                    render_series_on_chunk(state, chart, cfg_key, selection, scale_key)
+                end
+            end
         end
     end
 end
 
-local function create_chart_panels(panels, player, chart, surface_data, scale_key)
+local function create_chart_panels(panels, player, surface_data)
     local chart_state = get_chart_state(player)
-    local selection = get_chart_selection(player)
+    if not chart_state then return end
+    local selected_scale = get_selected_scale(player)
+    chart_state.cameras = chart_state.cameras or {}
     local panel_configs = {
         { key = "income", title = "Income", color = INCOME_COLOR },
         { key = "expense", title = "Expense", color = EXPENSE_COLOR },
@@ -245,72 +252,67 @@ local function create_chart_panels(panels, player, chart, surface_data, scale_ke
         }
         rate.style.font_color = cfg.color
 
-        local chunk = charts.surface.allocate_chunk(surface_data)
-        if not chunk then
+        for _, scale in ipairs(SCALES) do
+            local scale_chunk = chart_render.allocate_chunk(surface_data)
+            if not scale_chunk then
+                chart_state[scale][cfg.key] = nil
+            else
+                local scale_camera_params = chart_render.get_camera_params(scale_chunk, player.display_scale)
+
+                chart_state[scale][cfg.key] = {
+                    chunk = scale_chunk,
+                    surface = surface_data.surface,
+                    camera_params = scale_camera_params,
+                    series_key = cfg.key,
+                    panel = panel,
+                    rate_label = rate,
+                    line_ids = {},
+                }
+            end
+        end
+
+        local initial_state = chart_state[selected_scale][cfg.key]
+        if not initial_state then
             panel.add { type = "label", caption = "Error: no chunk available" }
-            chart_state[cfg.key] = nil
         else
-
-            local camera_params = charts.surface.get_camera_params(chunk, {
-                widget_width = 300,
-                widget_height = 233,
-                viewport_width = 300,
-                viewport_height = 233,
-                fit_mode = "fill",
-            })
-
             local camera = panel.add {
                 type = "camera",
                 name = "otc_camera_" .. cfg.key,
-                position = camera_params.position,
-                surface_index = surface_data.surface.index,
-                zoom = camera_params.zoom,
+                position = initial_state.camera_params.position,
+                surface_index = initial_state.surface.index,
+                zoom = initial_state.camera_params.zoom,
             }
             camera.style.width = 300
             camera.style.height = 233
-
-            local state = {
-                chunk = chunk,
-                surface = surface_data.surface,
-                camera = camera,
-                series_key = cfg.key,
-                panel = panel,
-                rate_label = rate,
-                line_ids = {},
-            }
-
-            chart_state[cfg.key] = state
-            render_series(state, chart, cfg.key, selection, scale_key)
+            chart_state.cameras[cfg.key] = camera
         end
     end
 end
 
-local function recreate_chart_panels(player)
+local function switch_chart_scale(player, scale_key)
     local frame = player.gui.screen.otc_trading_frame
     if not frame then return end
 
     local chart_state = get_chart_state(player)
     if not chart_state then return end
 
-    local surface_data = storage.chart_surface
-    if surface_data then
-        for _, state in pairs(chart_state) do
-            destroy_render_objects(state.line_ids)
-            if state.chunk then
-                charts.surface.free_chunk(surface_data, state.chunk)
-            end
-        end
-    end
-
-    local panels = frame.otc_trading_panels
-    if not panels or not panels.valid then return end
-    panels.clear()
+    local scale_state = chart_state[scale_key]
+    if not scale_state then return end
 
     local force_name = get_selected_force(player)
-    local scale_key = get_selected_scale(player)
     local chart = trading_history.get_chart_data(force_name, scale_key)
+    local selection = get_chart_selection(player)
 
-    create_chart_panels(panels, player, chart, surface_data, scale_key)
+    for _, series_key in ipairs(CHART_KINDS) do
+        local state = scale_state[series_key]
+        local camera = chart_state.cameras and chart_state.cameras[series_key]
+        if state and camera and camera.valid then
+            camera.position = state.camera_params.position
+            camera.zoom = state.camera_params.zoom
+            camera.surface_index = state.surface.index
+            render_series_on_chunk(state, chart, series_key, selection, scale_key)
+        end
+    end
 end
 
 local function profit_caption(net)
@@ -658,11 +660,8 @@ function M.create_trading_gui(player)
     panels.style.horizontal_spacing = 4
 
     local surface_data = init_chart_surface()
-    local force_name = get_selected_force(player)
-    local scale_key = get_selected_scale(player)
-    local chart = trading_history.get_chart_data(force_name, scale_key)
-
-    create_chart_panels(panels, player, chart, surface_data, scale_key)
+    create_chart_panels(panels, player, surface_data)
+    render_all_charts(player)
 
     local search_flow = frame.add {
         type = "flow",
@@ -743,7 +742,7 @@ end
 function M.refresh()
     for _, player in pairs(game.connected_players) do
         if player.gui.screen.otc_trading_frame then
-            update_chart(player)
+            render_all_charts(player)
             update_list(player)
         end
     end
@@ -758,7 +757,7 @@ end
 
 function M.handle_force_change(player, force_name)
     set_selected_force(player, force_name)
-    update_chart(player)
+    render_all_charts(player)
     rebuild_rows(player)
 end
 
@@ -769,7 +768,7 @@ function M.handle_series_toggle(player, kind, item_name, state)
     else
         selection[kind][item_name] = nil
     end
-    update_chart(player)
+    render_all_charts(player)
     update_list(player)
 end
 
@@ -786,8 +785,38 @@ end
 function M.handle_scale_button(player, scale_key)
     set_selected_scale(player, scale_key)
     update_scale_buttons(player, scale_key)
-    recreate_chart_panels(player)
+    switch_chart_scale(player, scale_key)
     update_list(player)
+end
+
+function M.handle_display_scale_changed(player)
+    local frame = player.gui.screen.otc_trading_frame
+    if not frame then return end
+
+    local chart_state = get_chart_state(player)
+    if not chart_state then return end
+
+    local selected_scale = get_selected_scale(player)
+
+    for _, scale in ipairs(SCALES) do
+        local scale_state = chart_state[scale]
+        if scale_state then
+            for _, series_key in ipairs(CHART_KINDS) do
+                local state = scale_state[series_key]
+                if state then
+                    state.camera_params = chart_render.get_camera_params(state.chunk, player.display_scale)
+                    if scale == selected_scale then
+                        local camera = chart_state.cameras and chart_state.cameras[series_key]
+                        if camera and camera.valid then
+                            camera.position = state.camera_params.position
+                            camera.zoom = state.camera_params.zoom
+                            camera.surface_index = state.surface.index
+                        end
+                    end
+                end
+            end
+        end
+    end
 end
 
 function M.close(player)
@@ -797,10 +826,15 @@ function M.close(player)
         if chart_state then
             local surface_data = storage.chart_surface
             if surface_data then
-                for _, state in pairs(chart_state) do
-                    destroy_render_objects(state.line_ids)
-                    if state.chunk then
-                        charts.surface.free_chunk(surface_data, state.chunk)
+                for _, scale in ipairs(SCALES) do
+                    local scale_state = chart_state[scale]
+                    if scale_state then
+                        for _, state in pairs(scale_state) do
+                            destroy_render_objects(state.line_ids)
+                            if state.chunk then
+                                chart_render.free_chunk(surface_data, state.chunk)
+                            end
+                        end
                     end
                 end
             end

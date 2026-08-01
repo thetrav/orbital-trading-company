@@ -209,6 +209,11 @@ script.on_event(defines.events.on_lua_shortcut, function(event)
     end
 end)
 
+script.on_event(defines.events.on_player_display_scale_changed, function(event)
+    local player = game.get_player(event.player_index)
+    if player then trading_gui.handle_display_scale_changed(player) end
+end)
+
 script.on_event(defines.events.on_research_finished, function()
     for _, player in pairs(game.connected_players) do
         local player_data = storage.players and storage.players[player.index]
