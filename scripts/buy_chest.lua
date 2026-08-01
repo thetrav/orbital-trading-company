@@ -3,6 +3,7 @@ local item_filter = require("scripts.item_filter")
 local market_gui = require("scripts.market_gui")
 local supply_demand = require("scripts.supply_demand")
 local trading_history = require("scripts.trading_history")
+local nauvis = require("scripts.nauvis")
 
 local M = {}
 
@@ -87,7 +88,9 @@ function M.process()
                             if to_buy > 0 then
                                 local inserted = inventory.insert({ name = item_name, count = to_buy })
                                 if inserted > 0 then
-                                    company.credits = company.credits - inserted * buy_price
+                                    local spent = inserted * buy_price
+                                    company.credits = company.credits - spent
+                                    nauvis.burn(spent, "buy_chest:" .. force_name)
                                     supply_demand.record_buy(item_name, inserted)
                                     trading_history.record_buy(data.force_name, item_name, inserted, price)
                                     market_gui.update_all_forces_credits()

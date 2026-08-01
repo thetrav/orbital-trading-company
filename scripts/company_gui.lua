@@ -1,30 +1,268 @@
 local market_gui = require("scripts.market_gui")
 local expand_gui = require("scripts.expand_gui")
+local company = require("scripts.company")
+local nauvis = require("scripts.nauvis")
+local utils = require("scripts.utils")
 
 local M = {}
-local STARTING_CREDITS = 5000
 
-local function assign_player(player, force_name)
-    local frame = player.gui.screen.otc_company_frame
-    if frame then frame.destroy() end
+local TAB_ORDER = { "companies", "company", "nauvis" }
+local TAB_INDEX = { companies = 1, company = 2, nauvis = 3 }
+
+local function rebuild_companies_tab(player, content)
+    for _, child in ipairs(content.children) do child.destroy() end
 
     local player_data = storage.players[player.index]
-    if not player_data then
-        storage.players[player.index] = {}
-        player_data = storage.players[player.index]
-    end
-    player_data.company = force_name
-    player.force = game.forces[force_name]
+    local held_name = player_data.company
 
-    market_gui.init_player(player)
-    expand_gui.init_player(player)
+    if not held_name then
+        content.add { type = "label", caption = "Found a new company:", style = "bold_label" }
+        local create_flow = content.add { type = "flow", name = "otc_company_create_flow", direction = "horizontal" }
+        create_flow.style.vertical_align = "center"
+        local name_field = create_flow.add { type = "textfield", name = "otc_company_name" }
+        name_field.style.width = 300
+        local capital_field = create_flow.add {
+            type = "textfield",
+            name = "otc_company_capital",
+            numeric = true,
+            text = tostring(company.FOUNDING_MIN),
+        }
+        capital_field.style.width = 140
+        create_flow.add { type = "button", name = "otc_company_create", caption = "Create", style = "green_button" }
+        content.add { type = "line" }
+    else
+        content.add {
+            type = "label",
+            caption = "You hold shares in " .. held_name .. ". Manage it from the Company tab.",
+            style = "caption_label",
+        }
+        content.add { type = "line" }
+    end
+
+    content.add { type = "label", caption = "Companies:", style = "bold_label" }
+    local scroll = content.add { type = "scroll-pane", name = "otc_company_join_list", direction = "vertical" }
+    scroll.style.height = 400
+    scroll.style.width = 680
+
+    for name, comp in pairs(storage.companies) do
+        if not company.is_state(name) then
+            local row = scroll.add { type = "flow", direction = "horizontal" }
+            row.style.vertical_align = "center"
+            row.style.horizontally_stretchable = true
+
+            row.add { type = "label", caption = name }
+
+            local holders_label = row.add { type = "label", caption = company.holder_count(comp) .. " holders" }
+            holders_label.style.left_margin = 8
+
+            local per_share = company.per_share(comp)
+            local price_label = row.add {
+                type = "label",
+                caption = "₾" .. utils.format_number(math.floor(per_share + 0.5)) .. "/share",
+            }
+            price_label.style.left_margin = 8
+
+            local spacer = row.add { type = "empty-widget" }
+            spacer.style.horizontally_stretchable = true
+
+            if comp.receivership then
+                if held_name then
+                    local btn = row.add {
+                        type = "button",
+                        name = "otc_company_takeover_" .. name,
+                        caption = "Take over",
+                        enabled = false,
+                    }
+                    btn.tooltip = "You already hold shares in a company."
+                else
+                    local cost = math.floor(company.takeover_price(comp) * nauvis.get_holding(name) + 0.5)
+                    row.add {
+                        type = "button",
+                        name = "otc_company_takeover_" .. name,
+                        caption = "Take over (₾" .. utils.format_number(cost) .. ")",
+                        style = "green_button",
+                    }
+                end
+            else
+                local available = company.available_shares(name, comp)
+                if held_name then
+                    local btn = row.add {
+                        type = "button",
+                        name = "otc_company_join_" .. name,
+                        caption = "Join",
+                        enabled = false,
+                    }
+                    btn.tooltip = "You already hold shares in a company."
+                elseif available <= 0 then
+                    row.add { type = "label", caption = "No shares available" }
+                else
+                    local cost = math.floor(per_share * available + 0.5)
+                    row.add {
+                        type = "button",
+                        name = "otc_company_join_" .. name,
+                        caption = "Join (₾" .. utils.format_number(cost) .. ")",
+                        style = "green_button",
+                    }
+                end
+            end
+        end
+    end
 end
 
-function M.open(player)
+local function rebuild_company_tab(player, content)
+    for _, child in ipairs(content.children) do child.destroy() end
+
+    local player_data = storage.players[player.index]
+    local name = player_data.company
+
+    if not name then
+        content.add {
+            type = "label",
+            caption = "You don't hold shares in a company yet. Use the Companies tab to found or join one.",
+        }
+        return
+    end
+
+    local comp = company.get(name)
+    if not comp then
+        content.add { type = "label", caption = "Company no longer exists." }
+        return
+    end
+
+    content.add { type = "label", caption = name, style = "frame_title" }
+    local seconds = math.floor((game.tick - (comp.founded_tick or 0)) / 60)
+    content.add { type = "label", caption = "Founded " .. seconds .. "s ago" }
+
+    if comp.receivership then
+        local badge = content.add { type = "label", caption = "IN RECEIVERSHIP" }
+        badge.style.font_color = { r = 0.9, g = 0.2, b = 0.2 }
+    end
+
+    content.add { type = "line" }
+
+    local per_share = company.per_share(comp)
+    content.add {
+        type = "label",
+        caption = "Company credits: ₾" .. utils.format_number(math.floor(comp.credits + 0.5)),
+        style = "caption_label",
+    }
+    content.add {
+        type = "label",
+        caption = "Per-share value (cash basis): ₾" .. utils.format_number(math.floor(per_share + 0.5)),
+    }
+
+    content.add { type = "line" }
+
+    local holder = comp.holders[player.index]
+    if holder then
+        content.add {
+            type = "label",
+            caption = "Your shares: " .. holder.shares .. " (" ..
+                string.format("%.1f", company.percent(comp, player.index)) .. "%)",
+            style = "caption_label",
+        }
+        content.add {
+            type = "label",
+            caption = "Your holding value: ₾" .. utils.format_number(math.floor(holder.shares * per_share + 0.5)),
+        }
+    end
+    content.add {
+        type = "label",
+        caption = "Personal credits: ₾" .. utils.format_number(math.floor((player_data.personal_credits or 0) + 0.5)),
+    }
+
+    if company.holder_count(comp) > 1 then
+        content.add { type = "line" }
+        content.add { type = "label", caption = "Holders:", style = "bold_label" }
+        local rows = content.add { type = "table", column_count = 4 }
+        rows.style.horizontal_spacing = 12
+        for _, row in ipairs(company.sorted_holders(comp)) do
+            local holder_player = game.get_player(row.player_index)
+            rows.add { type = "label", caption = holder_player and holder_player.name or ("#" .. row.player_index) }
+            rows.add { type = "label", caption = row.role }
+            rows.add { type = "label", caption = tostring(row.shares) }
+            rows.add { type = "label", caption = string.format("%.1f%%", company.percent(comp, row.player_index)) }
+        end
+        local nauvis_held = nauvis.get_holding(name)
+        if nauvis_held > 0 then
+            local issued = math.max(comp.shares_issued or 0, 1)
+            rows.add { type = "label", caption = "Nauvis (unsold)" }
+            rows.add { type = "label", caption = "--" }
+            rows.add { type = "label", caption = tostring(nauvis_held) }
+            rows.add { type = "label", caption = string.format("%.1f%%", nauvis_held / issued * 100) }
+        end
+    end
+
+    if holder then
+        content.add { type = "line" }
+        local settlement = company.settlement_price(name, comp)
+        local payout = math.floor(settlement * holder.shares + 0.5)
+        content.add {
+            type = "button",
+            name = "otc_company_leave",
+            caption = "Leave (₾" .. utils.format_number(payout) .. ")",
+            style = "red_button",
+        }
+    end
+end
+
+local function rebuild_nauvis_tab(_player, content)
+    for _, child in ipairs(content.children) do child.destroy() end
+
+    content.add { type = "label", caption = "Nauvis", style = "frame_title" }
+    content.add {
+        type = "label",
+        caption = "The state. Not joinable; mints and burns credits as players trade.",
+    }
+    content.add { type = "line" }
+    content.add {
+        type = "label",
+        caption = "Minted: ₾" .. utils.format_number(math.floor(storage.nauvis.minted + 0.5)),
+    }
+    content.add {
+        type = "label",
+        caption = "Burned: ₾" .. utils.format_number(math.floor(storage.nauvis.burned + 0.5)),
+    }
+    content.add {
+        type = "label",
+        caption = "Net money supply: ₾" .. utils.format_number(math.floor(nauvis.net() + 0.5)),
+        style = "caption_label",
+    }
+
+    content.add { type = "line" }
+    content.add { type = "label", caption = "Held company shares (market-making):", style = "bold_label" }
+    local any = false
+    for name, shares in pairs(storage.nauvis.holdings) do
+        any = true
+        content.add { type = "label", caption = name .. ": " .. shares .. " shares" }
+    end
+    if not any then
+        content.add { type = "label", caption = "None." }
+    end
+
+    content.add { type = "line" }
+    content.add { type = "label", caption = "Bonds", style = "bold_label" }
+    local bonds_btn = content.add { type = "button", caption = "Buy bonds", enabled = false }
+    bonds_btn.tooltip = "Coming soon: convert personal credits into Nauvis bonds carrying governance votes."
+end
+
+function M.rebuild_all(player)
+    local frame = player.gui.screen.otc_company_frame
+    if not frame then return end
+    local tabs = frame.otc_company_tabs
+    if not tabs then return end
+    rebuild_companies_tab(player, tabs.otc_company_content_companies)
+    rebuild_company_tab(player, tabs.otc_company_content_company)
+    rebuild_nauvis_tab(player, tabs.otc_company_content_nauvis)
+end
+
+local PROXIMITY_LIMIT_SQ = 36
+
+function M.open(player, entity)
     local existing = player.gui.screen.otc_company_frame
     if existing then return end
 
-    local frame = player.gui.screen.add{
+    local frame = player.gui.screen.add {
         type = "frame",
         name = "otc_company_frame",
         direction = "vertical",
@@ -32,24 +270,24 @@ function M.open(player)
     frame.auto_center = true
     frame.style.padding = 12
 
-    local titlebar = frame.add{
+    local titlebar = frame.add {
         type = "flow",
         direction = "horizontal",
     }
     titlebar.drag_target = frame
 
-    titlebar.add{
+    titlebar.add {
         type = "label",
         caption = "Company Management",
         style = "frame_title",
     }
 
-    titlebar.add{
+    titlebar.add {
         type = "empty-widget",
         style = "draggable_space_header",
     }.style.horizontally_stretchable = true
 
-    titlebar.add{
+    titlebar.add {
         type = "sprite-button",
         name = "otc_company_close",
         sprite = "utility/close",
@@ -57,136 +295,167 @@ function M.open(player)
         tooltip = {"gui.close"},
     }
 
+    local tabs = frame.add { type = "tabbed-pane", name = "otc_company_tabs" }
+    tabs.style.width = 760
+
+    local tab_companies = tabs.add { type = "tab", name = "otc_company_tab_companies", caption = "Companies" }
+    local content_companies = tabs.add {
+        type = "flow", name = "otc_company_content_companies", direction = "vertical",
+    }
+    tabs.add_tab(tab_companies, content_companies)
+
+    local tab_company = tabs.add { type = "tab", name = "otc_company_tab_company", caption = "Company" }
+    local content_company = tabs.add { type = "flow", name = "otc_company_content_company", direction = "vertical" }
+    tabs.add_tab(tab_company, content_company)
+
+    local tab_nauvis = tabs.add { type = "tab", name = "otc_company_tab_nauvis", caption = "Nauvis" }
+    local content_nauvis = tabs.add { type = "flow", name = "otc_company_content_nauvis", direction = "vertical" }
+    tabs.add_tab(tab_nauvis, content_nauvis)
+
+    rebuild_companies_tab(player, content_companies)
+    rebuild_company_tab(player, content_company)
+    rebuild_nauvis_tab(player, content_nauvis)
+
     local player_data = storage.players[player.index]
-
-    if player_data and player_data.company then
-        frame.add {
-            type = "label",
-            caption = "You belong to: " .. player_data.company,
-            style = "caption_label",
-        }
-    else
-        frame.add {
-            type = "label",
-            caption = "Found a new company:",
-            style = "bold_label",
-        }
-        local create_flow = frame.add { type = "flow", name = "otc_company_create_flow", direction = "horizontal" }
-        create_flow.style.vertical_align = "center"
-        local name_field = create_flow.add {
-            type = "textfield",
-            name = "otc_company_name",
-        }
-        name_field.style.width = 200
-        create_flow.add {
-            type = "button",
-            name = "otc_company_create",
-            caption = "Create",
-            style = "green_button",
-        }
-
-        frame.add { type = "line" }
-
-        frame.add {
-            type = "label",
-            caption = "Or join an existing company:",
-            style = "bold_label",
-        }
-
-        local scroll = frame.add {
-            type = "scroll-pane",
-            name = "otc_company_join_list",
-            direction = "vertical",
-        }
-        scroll.style.height = 150
-        scroll.style.width = 300
-
-        for _, force in pairs(game.forces) do
-            if force.name ~= "Nauvis" and force.name ~= "player"
-                and force.name ~= "enemy" and force.name ~= "neutral" then
-                local row = scroll.add { type = "flow", direction = "horizontal" }
-                row.style.vertical_align = "center"
-                row.style.horizontally_stretchable = true
-                row.add { type = "label", caption = force.name }
-                row.add {
-                    type = "button",
-                    name = "otc_company_join_" .. force.name,
-                    caption = "Join",
-                    style = "green_button",
-                }
-            end
-        end
+    local selected = player_data.company_gui_tab
+    if not selected then
+        selected = player_data.company and "company" or "companies"
     end
+    tabs.selected_tab_index = TAB_INDEX[selected] or 1
+
+    player_data.company_gui_monitor = entity
 end
 
 function M.close(player)
     local frame = player.gui.screen.otc_company_frame
     if frame then frame.destroy() end
+    local player_data = storage.players and storage.players[player.index]
+    if player_data then player_data.company_gui_monitor = nil end
+end
+
+function M.check_proximity(player)
+    local frame = player.gui.screen.otc_company_frame
+    if not frame then return end
+
+    local player_data = storage.players and storage.players[player.index]
+    if not player_data then return end
+
+    local monitor = player_data.company_gui_monitor
+    if not monitor or not monitor.valid or monitor.surface ~= player.surface then
+        M.close(player)
+        return
+    end
+
+    local dx = player.position.x - monitor.position.x
+    local dy = player.position.y - monitor.position.y
+    if dx * dx + dy * dy > PROXIMITY_LIMIT_SQ then
+        M.close(player)
+    end
+end
+
+function M.handle_tab_changed(player, element)
+    if element.name ~= "otc_company_tabs" then return end
+    local player_data = storage.players and storage.players[player.index]
+    if not player_data then return end
+    player_data.company_gui_tab = TAB_ORDER[element.selected_tab_index] or "companies"
+end
+
+local function select_tab(player, tab_name)
+    local player_data = storage.players[player.index]
+    player_data.company_gui_tab = tab_name
+    local frame = player.gui.screen.otc_company_frame
+    if frame and frame.otc_company_tabs then
+        frame.otc_company_tabs.selected_tab_index = TAB_INDEX[tab_name] or 1
+    end
 end
 
 function M.handle_create(player)
     local frame = player.gui.screen.otc_company_frame
     if not frame then return end
-    local create_flow = frame.otc_company_create_flow
-    local field = create_flow and create_flow.otc_company_name
-    if not field then return end
-    local name = field.text
-    if not name or name == "" then
-        player.print("Enter a company name!")
+    local content = frame.otc_company_tabs.otc_company_content_companies
+    local create_flow = content and content.otc_company_create_flow
+    if not create_flow then return end
+    local name_field = create_flow.otc_company_name
+    local capital_field = create_flow.otc_company_capital
+    if not name_field or not capital_field then return end
+
+    local name = name_field.text and name_field.text:match("^%s*(.-)%s*$")
+    local capital = tonumber(capital_field.text)
+
+    local ok, err = company.create(player, name, capital)
+    if not ok then
+        player.print(err)
         return
     end
-    name = name:match("^%s*(.-)%s*$")
-    if not name or name == "" then
-        player.print("Enter a valid company name!")
-        return
-    end
-    if name == "Nauvis" or name == "player" or name == "enemy" or name == "neutral" then
-        player.print("That name is reserved!")
-        return
-    end
-    if game.forces[name] then
-        player.print("A company named '" .. name .. "' already exists!")
-        return
-    end
-    local player_data = storage.players[player.index]
-    if player_data and player_data.company then
-        player.print("You already belong to a company!")
-        return
-    end
-    game.create_force(name)
-    for _, force in pairs(game.forces) do
-        force.set_cease_fire(game.forces[name], true)
-        force.set_friend(game.forces[name], true)
-    end
-    storage.companies[name] = { credits = STARTING_CREDITS }
-    assign_player(player, name)
+
+    market_gui.init_player(player)
+    expand_gui.init_player(player)
+    select_tab(player, "company")
+    M.rebuild_all(player)
 end
 
-function M.handle_join(player, force_name)
-    if not game.forces[force_name] then
-        player.print("Company no longer exists!")
+function M.handle_join(player, name)
+    local ok, err = company.join(player, name)
+    if not ok then
+        player.print(err)
         return
     end
-    local player_data = storage.players[player.index]
-    if player_data and player_data.company then
-        player.print("You already belong to a company!")
-        return
-    end
-    assign_player(player, force_name)
+
+    market_gui.init_player(player)
+    expand_gui.init_player(player)
+    select_tab(player, "company")
+    M.rebuild_all(player)
 end
 
-function M.init_or_restore(player)
-    local player_data = storage.players[player.index]
-    local company_name = player_data and player_data.company
+function M.handle_takeover(player, name)
+    local ok, err = company.takeover(player, name)
+    if not ok then
+        player.print(err)
+        return
+    end
 
-    if company_name and game.forces[company_name] then
-        player.force = game.forces[company_name]
-        if not player.gui.screen.otc_credits_frame then
-            market_gui.init_player(player)
-        end
-        if not player.gui.screen.otc_expand_frame then
-            expand_gui.init_player(player)
-        end
+    market_gui.init_player(player)
+    expand_gui.init_player(player)
+    select_tab(player, "company")
+    M.rebuild_all(player)
+end
+
+function M.handle_leave(player)
+    local ok, err = company.leave(player)
+    if not ok then
+        player.print(err)
+        return
+    end
+
+    if player.gui.screen.otc_market_frame then player.gui.screen.otc_market_frame.destroy() end
+    if player.gui.screen.otc_expand_frame then player.gui.screen.otc_expand_frame.destroy() end
+    market_gui.create_credits_gui(player)
+    select_tab(player, "companies")
+    M.rebuild_all(player)
+end
+
+function M.handle_click(player, element_name)
+    if element_name == "otc_company_close" then
+        M.close(player)
+        return
+    end
+    if element_name == "otc_company_create" then
+        M.handle_create(player)
+        return
+    end
+    if element_name == "otc_company_leave" then
+        M.handle_leave(player)
+        return
+    end
+    local join_name = string.match(element_name, "^otc_company_join_(.+)$")
+    if join_name then
+        M.handle_join(player, join_name)
+        return
+    end
+    local takeover_name = string.match(element_name, "^otc_company_takeover_(.+)$")
+    if takeover_name then
+        M.handle_takeover(player, takeover_name)
+        return
     end
 end
 

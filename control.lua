@@ -6,17 +6,20 @@ local buy_chest = require("scripts.buy_chest")
 local sell_chest = require("scripts.sell_chest")
 local supply_demand = require("scripts.supply_demand")
 local company_gui = require("scripts.company_gui")
+local company = require("scripts.company")
+local nauvis = require("scripts.nauvis")
 local trading_history = require("scripts.trading_history")
 local trading_gui = require("scripts.trading_gui")
 
 local BUY_CHEST_NAME = "otc-buy-chest"
 local SELL_CHEST_NAME = "otc-sell-chest"
 local NAUVIS_FORCE = "Nauvis"
+local STARTING_PERSONAL_CREDITS = 10000
 
 local function clear_enemies()
-    local nauvis = game.surfaces["nauvis"]
-    if nauvis then
-        for _, entity in ipairs(nauvis.find_entities_filtered{force = "enemy"}) do
+    local nauvis_surface = game.surfaces["nauvis"]
+    if nauvis_surface then
+        for _, entity in ipairs(nauvis_surface.find_entities_filtered{force = "enemy"}) do
             if entity.valid then entity.destroy() end
         end
     end
@@ -96,6 +99,13 @@ local function ensure_company_setup()
     if not storage.station_forces then
         storage.station_forces = {}
     end
+
+    local nauvis_is_new = storage.nauvis == nil
+    nauvis.init()
+    if nauvis_is_new then
+        storage.nauvis.minted = storage.nauvis.minted + (storage.companies[NAUVIS_FORCE].credits or 0)
+    end
+
     if storage.players then
         for _, pd in pairs(storage.players) do
             if pd.credits and not pd.company then
@@ -113,6 +123,56 @@ local function ensure_company_setup()
                 pd.company = legacy_name
                 pd.credits = nil
             end
+            if pd.personal_credits == nil then
+                pd.personal_credits = 0
+            end
+        end
+    end
+
+    for name, comp in pairs(storage.companies) do
+        if not company.is_state(name) and not comp.holders then
+            local members = {}
+            if storage.players then
+                for idx, pd in pairs(storage.players) do
+                    if pd.company == name then table.insert(members, idx) end
+                end
+            end
+            table.sort(members)
+
+            local total_shares = math.max(math.floor((comp.credits or 0) / company.SHARE_PAR), 1)
+            comp.holders = {}
+            if #members > 0 then
+                local per = math.floor(total_shares / #members)
+                local remainder = total_shares - per * #members
+                for i, idx in ipairs(members) do
+                    local shares = per + (i == 1 and remainder or 0)
+                    comp.holders[idx] = {
+                        shares = shares,
+                        role = (i == 1) and "manager" or "member",
+                        joined_tick = 0,
+                    }
+                end
+            end
+
+            comp.founded_tick = comp.founded_tick or 0
+            comp.treasury_shares = 0
+            comp.shares_issued = total_shares
+            comp.pending = comp.pending or {}
+            comp.auctions = comp.auctions or {}
+            comp.receivership = #members == 0
+            comp.valuation = comp.valuation
+                or { tick = 0, cash = 0, assets = 0, inventory = 0, earnings = 0, total = 0, per_share = 0 }
+            comp.ledger = comp.ledger or {}
+        end
+    end
+
+    for name, comp in pairs(storage.companies) do
+        if not company.is_state(name) and comp.holders then
+            local sum = (comp.treasury_shares or 0) + nauvis.get_holding(name)
+            for _, holder in pairs(comp.holders) do
+                sum = sum + holder.shares
+            end
+            comp.shares_issued = sum
         end
     end
     for _, data in pairs(storage.buy_chests or {}) do
@@ -158,9 +218,9 @@ script.on_init(function()
     game.map_settings.pollution.enabled = false
     game.map_settings.enemy_expansion.enabled = false
 
-    local nauvis = game.surfaces["nauvis"]
-    if nauvis then
-        build_starting_room(nauvis)
+    local nauvis_surface = game.surfaces["nauvis"]
+    if nauvis_surface then
+        build_starting_room(nauvis_surface)
     end
 
     if remote.interfaces["freeplay"] then
@@ -185,6 +245,12 @@ script.on_event(defines.events.on_player_created, function(event)
         if not storage.players[player.index] then
             storage.players[player.index] = {}
         end
+        local player_data = storage.players[player.index]
+        if player_data.personal_credits == nil then
+            player_data.personal_credits = STARTING_PERSONAL_CREDITS
+            nauvis.mint(STARTING_PERSONAL_CREDITS, "starting_grant")
+        end
+        market_gui.create_credits_gui(player)
         player.insert{name = "storage-tank", count = 1}
         player.insert{name = "pipe-to-ground", count = 2}
     end
@@ -244,6 +310,7 @@ script.on_nth_tick(1, function()
     supply_demand.process_tick()
     for _, player in pairs(game.connected_players) do
         expand_gui.check_proximity(player)
+        company_gui.check_proximity(player)
     end
     for _, surface in pairs(game.surfaces) do
         for _, pump in ipairs(surface.find_entities_filtered{name = "otc-water-pump"}) do
@@ -279,7 +346,7 @@ script.on_event(defines.events.on_gui_opened, function(event)
 
     if entity.name == "otc-company-monitor" then
         player.opened = nil
-        company_gui.open(player)
+        company_gui.open(player, entity)
         return
     end
 
@@ -366,22 +433,9 @@ end)
 
 
 script.on_event(defines.events.on_gui_click, function(event)
-    if event.element.name == "otc_company_create" then
+    if string.match(event.element.name, "^otc_company_") then
         local player = game.get_player(event.player_index)
-        if player then company_gui.handle_create(player) end
-        return
-    end
-
-    if event.element.name == "otc_company_close" then
-        local player = game.get_player(event.player_index)
-        if player then company_gui.close(player) end
-        return
-    end
-
-    local join_name = string.match(event.element.name, "^otc_company_join_(.+)$")
-    if join_name then
-        local player = game.get_player(event.player_index)
-        if player then company_gui.handle_join(player, join_name) end
+        if player then company_gui.handle_click(player, event.element.name) end
         return
     end
 
@@ -454,6 +508,11 @@ script.on_event(defines.events.on_gui_click, function(event)
         if not player then return end
         expand_gui.handle_buy_expansion(player)
     end
+end)
+
+script.on_event(defines.events.on_gui_selected_tab_changed, function(event)
+    local player = game.get_player(event.player_index)
+    if player then company_gui.handle_tab_changed(player, event.element) end
 end)
 
 script.on_event(defines.events.on_gui_selection_state_changed, function(event)

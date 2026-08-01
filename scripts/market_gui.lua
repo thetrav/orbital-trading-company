@@ -50,7 +50,7 @@ function M.create_credits_gui(player)
         name = "otc_credits_frame",
         direction = "vertical",
     }
-    frame.style.size = {120, 70}
+    frame.style.size = {120, 96}
     frame.style.padding = 4
     frame.style.bottom_padding = 8
 
@@ -82,8 +82,11 @@ function M.create_credits_gui(player)
     drag.style.height = 24
     drag.style.horizontally_stretchable = true
 
+    local company_row = frame.add { type = "flow", direction = "horizontal" }
+    company_row.style.vertical_align = "center"
+    company_row.add { type = "label", caption = "Co", style = "bold_label" }
     local credits = get_company_credits(player.index)
-    local label = frame.add {
+    local label = company_row.add {
         type = "label",
         name = "otc_credits_label",
         caption = utils.format_number(credits),
@@ -91,6 +94,20 @@ function M.create_credits_gui(player)
     label.style.font = "default-listbox"
     label.style.horizontal_align = "center"
     label.style.horizontally_stretchable = true
+
+    local personal_row = frame.add { type = "flow", direction = "horizontal" }
+    personal_row.style.vertical_align = "center"
+    personal_row.add { type = "label", caption = "Me", style = "bold_label" }
+    local player_data = storage.players and storage.players[player.index]
+    local personal_credits = player_data and player_data.personal_credits or 0
+    local personal_label = personal_row.add {
+        type = "label",
+        name = "otc_personal_credits_label",
+        caption = utils.format_number(personal_credits),
+    }
+    personal_label.style.font = "default-listbox"
+    personal_label.style.horizontal_align = "center"
+    personal_label.style.horizontally_stretchable = true
 
     return frame
 end
