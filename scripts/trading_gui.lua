@@ -15,6 +15,11 @@ local PROFIT_COLOR = { r = 0.9, g = 0.9, b = 0.1 }
 local CHART_KINDS = { "income", "expense", "profit" }
 local SCALES = { "second", "ten_second", "ten_minute" }
 
+-- The item list's rates are intentionally decoupled from the chart's selected time
+-- scale: always show a smoothed, non-flickering rate averaged over the last fully
+-- completed 5-second window.
+local LIST_RATE_SCALE = "five_second"
+
 local CHECKBOX_SIZE = 18
 local NAME_COLUMN_WIDTH = 200
 local VALUE_COLUMN_WIDTH = 95
@@ -97,15 +102,18 @@ local function set_selected_scale(player, scale_key)
     end
 end
 
-local function get_rate_label(scale_key)
+-- The label above each chart shows the total across the whole charted window, so the
+-- suffix is the window duration (matching the scale buttons: 1m / 10m / 1h), not the
+-- per-bucket duration.
+local function get_period_label(scale_key)
     if scale_key == "second" then
-        return "/s"
+        return "/m"
     elseif scale_key == "ten_second" then
-        return "/10s"
-    elseif scale_key == "ten_minute" then
         return "/10m"
+    elseif scale_key == "ten_minute" then
+        return "/h"
     end
-    return "/s"
+    return "/m"
 end
 
 local function destroy_render_objects(line_ids)
@@ -151,7 +159,7 @@ local function build_chart_view(chart, kind, selection)
     return data, counts, sum
 end
 
-local function render_series_on_chunk(state, chart, kind, selection, scale_key)
+local function render_series_on_chunk(state, chart, kind, selection)
     destroy_render_objects(state.line_ids)
 
     local data, counts, sum = build_chart_view(chart, kind, selection)
@@ -169,12 +177,15 @@ local function render_series_on_chunk(state, chart, kind, selection, scale_key)
 
     local line_ids = chart_render.line_graph(state.surface, state.chunk, options)
     state.line_ids = line_ids or {}
+end
 
-    local rate = (chart.sum[kind][TOTAL_KEY] or 0) / chart.length
-    local rate_suffix = get_rate_label(scale_key)
-    local caption = "₾" .. utils.format_number(math.floor(rate + 0.5)) .. rate_suffix
+-- Each panel's rate label is shared by all of that panel's scale states, so it must
+-- only ever be written for the scale currently on screen.
+local function update_rate_label(state, chart, kind, selection, scale_key)
+    local total = chart.sum[kind][TOTAL_KEY] or 0
+    local caption = "₾" .. utils.format_number(math.floor(total + 0.5)) .. get_period_label(scale_key)
     if kind == "profit" then
-        caption = (rate >= 0 and "+" or "") .. caption
+        caption = (total >= 0 and "+" or "") .. caption
     end
     state.rate_label.caption = caption
     local color_map = get_series_color_map(chart, kind, selection)
@@ -190,6 +201,7 @@ local function render_all_charts(player)
 
     local force_name = get_selected_force(player)
     local selection = get_chart_selection(player)
+    local selected_scale = get_selected_scale(player)
 
     for _, scale_key in ipairs(SCALES) do
         local chart = trading_history.get_chart_data(force_name, scale_key)
@@ -198,7 +210,10 @@ local function render_all_charts(player)
             for _, cfg_key in ipairs(CHART_KINDS) do
                 local state = scale_state[cfg_key]
                 if state then
-                    render_series_on_chunk(state, chart, cfg_key, selection, scale_key)
+                    render_series_on_chunk(state, chart, cfg_key, selection)
+                    if scale_key == selected_scale then
+                        update_rate_label(state, chart, cfg_key, selection, scale_key)
+                    end
                 end
             end
         end
@@ -310,7 +325,8 @@ local function switch_chart_scale(player, scale_key)
             camera.position = state.camera_params.position
             camera.zoom = state.camera_params.zoom
             camera.surface_index = state.surface.index
-            render_series_on_chunk(state, chart, series_key, selection, scale_key)
+            render_series_on_chunk(state, chart, series_key, selection)
+            update_rate_label(state, chart, series_key, selection, scale_key)
         end
     end
 end
@@ -438,10 +454,9 @@ local function populate_rows(player, state)
     state.force_name = force_name
 end
 
-local function update_total_row(force_name, state, selection, color_maps)
-    local total_slot = trading_history.get_slot(force_name, TOTAL_KEY, 1)
-    local total_income = total_slot and trading_history.income_from_slot(total_slot) or 0
-    local total_expense = total_slot and trading_history.expense_from_slot(total_slot) or 0
+local function update_total_row(state, selection, color_maps, list_period, list_interval)
+    local total_income = (list_period.income[TOTAL_KEY] or 0) / list_interval
+    local total_expense = (list_period.expense[TOTAL_KEY] or 0) / list_interval
     local total_net = total_income - total_expense
     local total = state.total
     total.income.value.caption = "₾" .. utils.format_number(math.floor(total_income + 0.5)) .. "/s"
@@ -499,7 +514,10 @@ local function update_list(player)
         color_maps[kind] = get_series_color_map(chart, kind, selection)
     end
 
-    update_total_row(force_name, state, selection, color_maps)
+    local list_period = trading_history.get_previous_period(force_name, LIST_RATE_SCALE)
+    local list_interval = trading_history.get_scales()[LIST_RATE_SCALE].interval
+
+    update_total_row(state, selection, color_maps, list_period, list_interval)
 
     for _, item_name in ipairs(state.order) do
         local row = state.rows[item_name]
@@ -507,9 +525,8 @@ local function update_list(player)
             string.lower(search_text), 1, true) ~= nil
         row.flow.visible = matches
         if matches then
-            local slot = trading_history.get_slot(force_name, item_name, 1)
-            local income = slot and trading_history.income_from_slot(slot) or 0
-            local expense = slot and trading_history.expense_from_slot(slot) or 0
+            local income = (list_period.income[item_name] or 0) / list_interval
+            local expense = (list_period.expense[item_name] or 0) / list_interval
             local net = income - expense
             row.income.value.caption = "₾" .. utils.format_number(math.floor(income + 0.5)) .. "/s"
             row.income.value.style.font_color = selection.income[item_name] and color_maps.income[item_name] or GRAY_COLOR
