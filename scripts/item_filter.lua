@@ -1,3 +1,5 @@
+local research = require("scripts.research")
+
 local M = {}
 
 local ALLOWED_SUBGROUPS = {
@@ -25,6 +27,7 @@ function M.is_item_allowed(item_name, force)
     local prototype = prototypes.item[item_name]
     if not prototype then return false end
     if M.is_item_hidden(prototype) then return false end
+    if research.is_banned_item(item_name) then return false end
     local subgroup = prototype.subgroup
     if not subgroup or not ALLOWED_SUBGROUPS[subgroup.name] then return false end
     if RESEARCH_FREE_SUBGROUPS[subgroup.name] then return true end

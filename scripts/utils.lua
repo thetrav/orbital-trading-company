@@ -1,3 +1,5 @@
+local stock = require("scripts.stock")
+
 local M = {}
 
 local BASE_ORE_PRICE = 100
@@ -21,11 +23,18 @@ end
 
 function M.get_price(item_name)
     local base = M.get_base_price(item_name)
+    local anchor = base
     local supply_demand = package.loaded["scripts.supply_demand"]
     if supply_demand then
-        return supply_demand.get_effective_price(item_name, base)
+        anchor = base + supply_demand.get_offset(item_name)
     end
-    return base
+    local price = anchor * stock.scarcity(item_name)
+    local ceiling = math.max(1, math.floor(base * stock.SCARCITY_CAP + 0.5))
+    return math.max(1, math.min(ceiling, math.floor(price + 0.5)))
+end
+
+function M.get_stock(item_name)
+    return stock.get(item_name)
 end
 
 function M.get_price_offset(item_name)

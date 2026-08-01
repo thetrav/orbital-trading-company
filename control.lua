@@ -10,6 +10,10 @@ local company = require("scripts.company")
 local nauvis = require("scripts.nauvis")
 local trading_history = require("scripts.trading_history")
 local trading_gui = require("scripts.trading_gui")
+local stock = require("scripts.stock")
+local nauvis_industry = require("scripts.nauvis_industry")
+local research = require("scripts.research")
+local supply_belts = require("scripts.supply_belts")
 
 local BUY_CHEST_NAME = "otc-buy-chest"
 local SELL_CHEST_NAME = "otc-sell-chest"
@@ -99,6 +103,9 @@ local function ensure_company_setup()
     if not storage.station_forces then
         storage.station_forces = {}
     end
+
+    stock.init()
+    research.init()
 
     local nauvis_is_new = storage.nauvis == nil
     nauvis.init()
@@ -222,6 +229,7 @@ script.on_init(function()
     if nauvis_surface then
         build_starting_room(nauvis_surface)
     end
+    nauvis_industry.ensure_built()
 
     if remote.interfaces["freeplay"] then
         remote.call("freeplay", "set_created_items", {
@@ -251,6 +259,7 @@ script.on_event(defines.events.on_player_created, function(event)
             nauvis.mint(STARTING_PERSONAL_CREDITS, "starting_grant")
         end
         market_gui.create_credits_gui(player)
+        research.lock_player_research(player)
         player.insert{name = "storage-tank", count = 1}
         player.insert{name = "pipe-to-ground", count = 2}
     end
@@ -280,7 +289,8 @@ script.on_event(defines.events.on_player_display_scale_changed, function(event)
     if player then trading_gui.handle_display_scale_changed(player) end
 end)
 
-script.on_event(defines.events.on_research_finished, function()
+script.on_event(defines.events.on_research_finished, function(event)
+    research.handle_research_finished(event.research.force)
     for _, player in pairs(game.connected_players) do
         local player_data = storage.players and storage.players[player.index]
         if player_data then
@@ -289,16 +299,19 @@ script.on_event(defines.events.on_research_finished, function()
         if player.gui.screen.otc_market_frame then
             market_gui.rebuild_market_list(player)
         end
+        company_gui.refresh_nauvis_tab(player)
     end
 end)
 
 script.on_nth_tick(60, function()
     trading_history.advance_second()
     trading_gui.refresh()
+    research.start_pending_research()
 end)
 
 script.on_configuration_changed(function()
     ensure_company_setup()
+    nauvis_industry.ensure_built()
 end)
 
 local market_refresh_counter = 0
@@ -307,7 +320,10 @@ local MARKET_REFRESH_INTERVAL = 30
 script.on_nth_tick(1, function()
     buy_chest.process()
     sell_chest.process()
+    supply_belts.process()
     supply_demand.process_tick()
+    research.sync_all_progress()
+    market_gui.update_all_forces_credits()
     for _, player in pairs(game.connected_players) do
         expand_gui.check_proximity(player)
         company_gui.check_proximity(player)
@@ -326,13 +342,19 @@ script.on_nth_tick(1, function()
             if player.gui.screen.otc_market_frame then
                 market_gui.refresh_market_prices(player)
             end
+            company_gui.refresh_nauvis_stock(player)
         end
     end
 end)
 
 script.on_event(defines.events.on_built_entity, function(event)
+    if research.block_lab(event.created_entity, event.player_index) then return end
     buy_chest.register(event.created_entity)
     sell_chest.register(event.created_entity)
+end)
+
+script.on_event(defines.events.on_robot_built_entity, function(event)
+    research.block_lab(event.entity, nil)
 end)
 
 script.on_event(defines.events.on_gui_opened, function(event)
@@ -524,6 +546,10 @@ script.on_event(defines.events.on_gui_selection_state_changed, function(event)
         if force_name then
             trading_gui.handle_force_change(player, force_name)
         end
+        return
+    end
+    if event.element.name == "otc_company_nauvis_research" then
+        company_gui.handle_research_selection(player, event.element)
         return
     end
 end)

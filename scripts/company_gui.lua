@@ -3,6 +3,8 @@ local expand_gui = require("scripts.expand_gui")
 local company = require("scripts.company")
 local nauvis = require("scripts.nauvis")
 local utils = require("scripts.utils")
+local item_filter = require("scripts.item_filter")
+local research = require("scripts.research")
 
 local M = {}
 
@@ -206,8 +208,82 @@ local function rebuild_company_tab(player, content)
     end
 end
 
-local function rebuild_nauvis_tab(_player, content)
+local function format_tech_name(tech_name)
+    local prototype = prototypes.technology[tech_name]
+    if prototype and prototype.localised_name then
+        return prototype.localised_name
+    end
+    return tech_name
+end
+
+local function current_research_caption()
+    local current = research.current_research_name()
+    if not current then return "Idle -- no research selected" end
+    local state = game.forces[nauvis.FORCE_NAME]
+    local progress = state and state.research_progress or 0
+    return { "", "Researching: ", format_tech_name(current), string.format("  (%.0f%%)", progress * 100) }
+end
+
+-- The dropdown is player-editable, so its options are only rewritten when the
+-- underlying frontier actually changes -- otherwise the periodic refresh would stomp
+-- whatever the player had highlighted before they got to press Apply.
+local function populate_research_dropdown(dropdown, player_data)
+    local available = research.get_available_technologies()
+    local previous = player_data.nauvis_research_options
+    -- The dropdown's own item count matters as well as the cached list: reopening the
+    -- tab builds a fresh (empty) dropdown while the cache still holds the old options,
+    -- and comparing only the cache would leave the new element unpopulated.
+    local changed = #dropdown.items ~= #available or not previous or #previous ~= #available
+    if not changed then
+        for i = 1, #available do
+            if previous[i] ~= available[i] then
+                changed = true
+                break
+            end
+        end
+    end
+
+    if changed then
+        local items = {}
+        for i, tech_name in ipairs(available) do
+            items[i] = format_tech_name(tech_name)
+        end
+        dropdown.items = items
+        player_data.nauvis_research_options = available
+    end
+
+    local wanted = player_data.nauvis_research_selection or research.get_next_research()
+    local selected_index = 0
+    for i, tech_name in ipairs(available) do
+        if tech_name == wanted then
+            selected_index = i
+            break
+        end
+    end
+    if dropdown.selected_index ~= selected_index then
+        dropdown.selected_index = selected_index
+    end
+end
+
+function M.selected_research_name(player)
+    local player_data = storage.players and storage.players[player.index]
+    if not player_data then return nil end
+    local options = player_data.nauvis_research_options
+    local frame = player.gui.screen.otc_company_frame
+    local tabs = frame and frame.otc_company_tabs
+    local content = tabs and tabs.otc_company_content_nauvis
+    local row = content and content.otc_company_nauvis_research_row
+    local dropdown = row and row.otc_company_nauvis_research
+    if not dropdown or not options then return nil end
+    local index = dropdown.selected_index
+    if index == 0 then return nil end
+    return options[index]
+end
+
+local function rebuild_nauvis_tab(player, content)
     for _, child in ipairs(content.children) do child.destroy() end
+
+    local player_data = storage.players[player.index]
 
     content.add { type = "label", caption = "Nauvis", style = "frame_title" }
     content.add {
@@ -217,17 +293,78 @@ local function rebuild_nauvis_tab(_player, content)
     content.add { type = "line" }
     content.add {
         type = "label",
+        name = "otc_company_nauvis_minted",
         caption = "Minted: ₾" .. utils.format_number(math.floor(storage.nauvis.minted + 0.5)),
     }
     content.add {
         type = "label",
+        name = "otc_company_nauvis_burned",
         caption = "Burned: ₾" .. utils.format_number(math.floor(storage.nauvis.burned + 0.5)),
     }
     content.add {
         type = "label",
+        name = "otc_company_nauvis_net",
         caption = "Net money supply: ₾" .. utils.format_number(math.floor(nauvis.net() + 0.5)),
         style = "caption_label",
     }
+
+    content.add { type = "line" }
+    content.add { type = "label", caption = "Research", style = "bold_label" }
+    content.add {
+        type = "label",
+        name = "otc_company_nauvis_current_research",
+        caption = current_research_caption(),
+        style = "caption_label",
+    }
+
+    local research_row = content.add {
+        type = "flow", name = "otc_company_nauvis_research_row", direction = "horizontal",
+    }
+    research_row.style.vertical_align = "center"
+    research_row.add { type = "label", caption = "Next:" }
+    local research_dropdown = research_row.add {
+        type = "drop-down",
+        name = "otc_company_nauvis_research",
+    }
+    research_dropdown.style.horizontally_stretchable = true
+    populate_research_dropdown(research_dropdown, player_data)
+    research_row.add {
+        type = "button",
+        name = "otc_company_nauvis_apply_research",
+        caption = "Apply",
+        style = "green_button",
+    }
+
+    content.add { type = "line" }
+    content.add { type = "label", caption = "Warehouse stock", style = "bold_label" }
+    local stock_frame = content.add {
+        type = "frame", name = "otc_company_nauvis_stock_frame", style = "inside_deep_frame",
+    }
+    stock_frame.style.horizontally_stretchable = true
+    local stock_list = stock_frame.add {
+        type = "scroll-pane",
+        name = "otc_company_nauvis_stock_list",
+        direction = "vertical",
+    }
+    stock_list.style.height = 220
+    stock_list.style.horizontally_stretchable = true
+    stock_list.style.padding = 4
+
+    if not player_data.allowed_items then
+        player_data.allowed_items = item_filter.get_allowed_items(player.force)
+    end
+    for _, item in pairs(player_data.allowed_items or {}) do
+        local row = stock_list.add {
+            type = "flow", name = "otc_company_nauvis_stock_row_" .. item.name, direction = "horizontal",
+        }
+        row.style.vertical_align = "center"
+        row.add { type = "sprite", sprite = "item/" .. item.name }
+        local name_label = row.add { type = "label", caption = item.prototype.localised_name }
+        name_label.style.horizontally_stretchable = true
+        local count_label = row.add { type = "label", name = "otc_company_nauvis_stock_count_" .. item.name }
+        count_label.style.horizontal_align = "right"
+        market_gui.apply_stock_label(count_label, item.name)
+    end
 
     content.add { type = "line" }
     content.add { type = "label", caption = "Held company shares (market-making):", style = "bold_label" }
@@ -244,6 +381,65 @@ local function rebuild_nauvis_tab(_player, content)
     content.add { type = "label", caption = "Bonds", style = "bold_label" }
     local bonds_btn = content.add { type = "button", caption = "Buy bonds", enabled = false }
     bonds_btn.tooltip = "Coming soon: convert personal credits into Nauvis bonds carrying governance votes."
+end
+
+function M.refresh_nauvis_tab(player)
+    local frame = player.gui.screen.otc_company_frame
+    if not frame then return end
+    local tabs = frame.otc_company_tabs
+    if not tabs then return end
+    local content = tabs.otc_company_content_nauvis
+    if not content then return end
+    rebuild_nauvis_tab(player, content)
+end
+
+-- Updates values in place instead of destroying/rebuilding rows, so the stock
+-- scroll-pane keeps its scroll position across the periodic refresh. Only call
+-- rebuild_nauvis_tab when the allowed-items list itself can have changed (research).
+function M.refresh_nauvis_stock(player)
+    local frame = player.gui.screen.otc_company_frame
+    if not frame then return end
+    local tabs = frame.otc_company_tabs
+    if not tabs then return end
+    local content = tabs.otc_company_content_nauvis
+    if not content then return end
+
+    local minted = content.otc_company_nauvis_minted
+    if minted and minted.valid then
+        minted.caption = "Minted: ₾" .. utils.format_number(math.floor(storage.nauvis.minted + 0.5))
+    end
+    local burned = content.otc_company_nauvis_burned
+    if burned and burned.valid then
+        burned.caption = "Burned: ₾" .. utils.format_number(math.floor(storage.nauvis.burned + 0.5))
+    end
+    local net = content.otc_company_nauvis_net
+    if net and net.valid then
+        net.caption = "Net money supply: ₾" .. utils.format_number(math.floor(nauvis.net() + 0.5))
+    end
+
+    local player_data = storage.players[player.index]
+
+    local current_research = content.otc_company_nauvis_current_research
+    if current_research and current_research.valid then
+        current_research.caption = current_research_caption()
+    end
+
+    local research_row = content.otc_company_nauvis_research_row
+    local dropdown = research_row and research_row.otc_company_nauvis_research
+    if dropdown and dropdown.valid and player_data then
+        populate_research_dropdown(dropdown, player_data)
+    end
+
+    local stock_frame = content.otc_company_nauvis_stock_frame
+    local stock_list = stock_frame and stock_frame.otc_company_nauvis_stock_list
+    if not stock_list then return end
+    for _, item in pairs(player_data and player_data.allowed_items or {}) do
+        local row = stock_list["otc_company_nauvis_stock_row_" .. item.name]
+        local count_label = row and row["otc_company_nauvis_stock_count_" .. item.name]
+        if count_label and count_label.valid then
+            market_gui.apply_stock_label(count_label, item.name)
+        end
+    end
 end
 
 function M.rebuild_all(player)
@@ -434,9 +630,51 @@ function M.handle_leave(player)
     M.rebuild_all(player)
 end
 
+function M.handle_apply_research(player)
+    local tech_name = M.selected_research_name(player)
+    if not tech_name then
+        player.print("Pick a technology for Nauvis to research first.")
+        return
+    end
+
+    local ok, err = research.set_next_research(tech_name)
+    if not ok then
+        player.print(err)
+        return
+    end
+
+    local player_data = storage.players and storage.players[player.index]
+    if player_data then
+        player_data.nauvis_research_selection = nil
+    end
+
+    if research.current_research_name() == tech_name then
+        player.print("Nauvis is now researching " .. tech_name .. ".")
+    else
+        player.print("Nauvis will research " .. tech_name .. " next.")
+    end
+    if not research.can_supply(tech_name) then
+        player.print("Warning: Nauvis cannot produce the science packs that technology needs, "
+            .. "so it will not progress.")
+    end
+    M.refresh_nauvis_stock(player)
+end
+
+function M.handle_research_selection(player, element)
+    local player_data = storage.players and storage.players[player.index]
+    if not player_data then return end
+    local options = player_data.nauvis_research_options
+    local index = element.selected_index
+    player_data.nauvis_research_selection = options and index > 0 and options[index] or nil
+end
+
 function M.handle_click(player, element_name)
     if element_name == "otc_company_close" then
         M.close(player)
+        return
+    end
+    if element_name == "otc_company_nauvis_apply_research" then
+        M.handle_apply_research(player)
         return
     end
     if element_name == "otc_company_create" then

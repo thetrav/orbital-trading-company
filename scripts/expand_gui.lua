@@ -1,5 +1,4 @@
 local utils = require("scripts.utils")
-local market_gui = require("scripts.market_gui")
 local platform = require("scripts.platform")
 local nauvis = require("scripts.nauvis")
 
@@ -337,7 +336,6 @@ function M.handle_buy_expansion(player)
         company.credits = company.credits - cost
         nauvis.burn(cost, "expansion:" .. player.force.name)
         gate_state.expanded = true
-        market_gui.update_all_forces_credits()
         player.print("Platform expanded!")
         M.close(player)
     elseif err then

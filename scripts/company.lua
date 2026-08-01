@@ -1,4 +1,5 @@
 local nauvis = require("scripts.nauvis")
+local research = require("scripts.research")
 
 local M = {}
 
@@ -132,6 +133,7 @@ function M.create(player, name, capital)
         force.set_cease_fire(game.forces[name], true)
         force.set_friend(game.forces[name], true)
     end
+    research.sync_force(game.forces[name])
 
     local shares = math.floor(capital / SHARE_PAR)
     storage.companies[name] = {

@@ -2,9 +2,19 @@
 
 ## Validation
 
-After every batch of changes, run `./validate.sh` and verify all 5 checks pass before reporting done. The script runs `luacheck`, `lua-language-server`, `--dump-data`, `--create`, and `--load-game --until-tick 600`.
+After every batch of changes, run `./validate.sh` and verify all 6 checks pass before reporting done. The script runs `luacheck`, `lua-language-server`, `busted`, `--dump-data`, `--create`, and `--load-game --until-tick 600`.
 
 Do not skip this step. Do not rely only on headless Factorio — also check `luacheck` and `lua-language-server` output for regressions.
+
+`validate.sh` prints its own pass/fail summary — read that rather than piping it through `grep`/`head`. If you need different output, change the script (flags or env vars are fine).
+
+## Tests
+
+`test/` holds [busted](https://lunarmodules.github.io/busted/) specs, run by `validate.sh` step 3 and configured by `.busted`. Install with `luarocks install --local busted`; the step SKIPs (loudly) if the binary is missing, and honours a `BUSTED` env var override.
+
+`test/factorio_mock.lua` stands up the runtime globals (`game`, `storage`, `prototypes`, `defines`) that a module under test reads — `mock.setup{...}` takes a technology-name → spec table and wires prerequisites by name. Call `mock.teardown()` in `after_each`, and clear `package.loaded` for the module under test before requiring it so each spec gets fresh state.
+
+Prefer adding a spec here over ad-hoc probe scripts that get `require`d from `control.lua` — those need a headless round trip and leave the repo dirty. `test/` is excluded from `lua-language-server` via `workspace.ignoreDir`, because the mock's globals otherwise shadow the real API stubs and produce false `undefined-field` reports.
 
 ## What this mod is
 
@@ -26,9 +36,13 @@ Factorio 2.0 mod "Orbital Trading Company" (`info.json`, version 0.1.0, depends 
 
 - `buy_chest.lua` — buy chest reads green+red circuit signals as desired counts, buys at `floor(price * 1.01 + 0.5)`, deducts from company credits. `process()` runs every tick. Registered in `storage.buy_chests[unit_number] = { chest, force_name }`.
 - `sell_chest.lua` — auto-sells contents at `floor(price * 0.99 + 0.5)`. Same storage shape.
-- `pricing.lua` — BFS through tech tree computing a static base price per item (raw resources = 100; recipe cost = ingredients + smelting fuel + `energy * 10`/s). Runs on init/load into `storage.prices`.
-- `supply_demand.lua` — 10-tick periods aggregate buys/sells; `price_offsets[item]` drift by `demand * 0.01`, decay `* 0.95`, clamped to ±50% of base. Effective price = base + offset (min 1).
-- `utils.lua` — `format_number` (comma thousands), `get_base_price`, `get_price` (base + supply/demand offset).
+- `pricing.lua` — BFS through tech tree computing a static base price per item (raw resources = 100; recipe cost = ingredients + smelting fuel + `energy * 10`/s). Runs on init/load into `storage.prices`. This is now only the **anchor**; the traded price is the anchor scaled by Nauvis's stock level.
+- `stock.lua` — Nauvis's finite warehouse, `storage.stock.items[item] = count`. `TARGET_STOCK = 1000`, `SCARCITY_CAP = 20`. `scarcity()` returns `(T/s)^0.7` below target and `(T/s)^2` above, so prices climb as shelves empty and collapse when flooded. Unknown items lazily seed at `TARGET_STOCK` on first `get`, so items seed themselves as tech unlocks them. `take` never returns more than is held — that is the hard stop at zero.
+- `supply_demand.lua` — 10-tick periods aggregate buys/sells; `price_offsets[item]` drift by `demand * 0.01`, decay `* 0.95`. Applied to the anchor *before* the scarcity multiple. Now partly redundant with stock movement — see `doc/nauvis_economy.md` §1.
+- `utils.lua` — `format_number` (comma thousands), `get_base_price`, `get_price` (`(base + offset) * scarcity`, floored at 1 and capped at `base * 20`), `get_stock`.
+- `supply_belts.lua` — per-tick processing for Nauvis's two physical stock interfaces. Supply: pushes one item per line per tick from stock onto a registered belt, stopping when stock runs out. Intake: drains every transport line into stock. Line count comes from `get_max_transport_line_index()` — transport belts have 2, underground belts 4.
+- `research.lua` — Nauvis's research monopoly. Instantly researches the three craft-item trigger techs (`steam-power`, `electronics`, `automation-science-pack`) on init, replays every Nauvis technology onto all other forces, and disables every recipe producing a `tool`-type item or a lab. `ensure_research` auto-queues the cheapest technology whose ingredients Nauvis can actually make (currently red science only). `block_lab` destroys and refunds labs built by non-Nauvis forces.
+- `nauvis_industry.lua` — one-shot builder for the sealed production room (north of the player platform, replacing the old top airlock) and the ore mine far to the west. Idempotent via `storage.nauvis_industry.built`.
 - `item_filter.lua` — allowed items are subgroup `raw-resource`/`raw-material`/`intermediate-product`, non-hidden, and either research-free or craftable by the force's enabled recipes. Cached per player in `player_data.allowed_items`, invalidated on research finish.
 - `trading_history.lua` — 60-entry ring buffer per force per item (`storage.trading_history[force][item][slot] = { bought, sold, price }`), plus `storage.trading_chart[force]` (factorio-charts data). `advance_second()` advances `storage.trading_history_head`.
 - `market_gui.lua` — persistent Market window (filter All/Pinned/None, search, pin checkboxes, price + trend arrows) and the top-center Credits frame. Buy price displayed is `floor(price * 1.01 + 0.5)`.
@@ -45,6 +59,9 @@ Factorio 2.0 mod "Orbital Trading Company" (`info.json`, version 0.1.0, depends 
 - `station_forces[station_name]`, `rocket_silos[unit_number]`, `otc_teleporters[unit_number]`, `otc_return_teleporters[unit_number] = { surface, position }`, `otc_station_index`.
 - `buy_chests` / `sell_chests` — keyed by unit_number.
 - `prices`, `supply_demand { tick_counter, period_buys, period_sells, price_offsets }`.
+- `stock { items }` — Nauvis's warehouse. Not a Factorio inventory; nothing in the world holds it.
+- `supply_belts[unit_number] = { entity, left, right }`, `intake_belts[unit_number] = { entity }`.
+- `nauvis_industry { built }`.
 - `trading_history`, `trading_history_head`, `trading_chart`, `chart_surface`.
 - `gates`, `gates_by_id`.
 
@@ -65,3 +82,7 @@ Factorio 2.0 mod "Orbital Trading Company" (`info.json`, version 0.1.0, depends 
 - Players join a company via GUI; `player.force` is set to the company force, so chest `force_name` is captured at build/register time and must not be read from the entity afterwards.
 - Rocket-silo GUI is suppressed for otc station silos (`storage.rocket_silos`) — delivery via silo is not yet implemented.
 - New surface creation (orbital stations) requires explicit chunk generation and `treat_missing_as_default = false` autoplace settings to stay empty.
+- **Inserter `direction` points at the pickup, not the drop.** An inserter facing `east` picks up from the tile to its east and drops to its west. Getting this backwards is silent — the inserter just reports `waiting_for_source_items` forever.
+- **Unpaired underground belts do not move items.** `otc-supply-belt` is scenery only; the item flow happens on a real `transport-belt` placed in front of it, which is what `supply_belts.register_supply` receives. `otc-intake-belt` works as a real underground belt because entities *drop onto* it rather than needing it to convey.
+- Nauvis's whole surface is `out-of-map` (`data-updates.lua`), so anything built outside the player platform must lay its own tiles first.
+- Only the east/west/north airlocks exist. The `south` entry (screen-top, gate at `{0,-6}`) was removed from `platform_gates.AIRLOCKS` to make room for the production room. Note the table's labels are y-flipped relative to Factorio's directions.

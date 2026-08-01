@@ -19,12 +19,6 @@ local AIRLOCKS = {
         walls = {{x = 1, y = 7}, {x = -1, y = 7}},
         gate_dir = defines.direction.east,
     },
-    south = {
-        gate = {x = 0, y = -6},
-        computer = {x = 0, y = -7},
-        walls = {{x = 1, y = -7}, {x = -1, y = -7}},
-        gate_dir = defines.direction.east,
-    },
 }
 
 function M.get_airlock(dir)

@@ -13,6 +13,9 @@
         "factorio/library"
     ],
     "workspace.checkThirdParty": false,
+    "workspace.ignoreDir": [
+        "test"
+    ],
     "diagnostics.globals": [
         "game", "script", "remote", "commands", "rendering",
         "storage", "defines", "settings", "mods", "data",

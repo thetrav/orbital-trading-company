@@ -1,9 +1,9 @@
 local utils = require("scripts.utils")
 local item_filter = require("scripts.item_filter")
-local market_gui = require("scripts.market_gui")
 local supply_demand = require("scripts.supply_demand")
 local trading_history = require("scripts.trading_history")
 local nauvis = require("scripts.nauvis")
+local stock = require("scripts.stock")
 
 local M = {}
 
@@ -53,12 +53,12 @@ function M.process()
                         local removed = inventory.remove({ name = item.name, count = item.count })
                         if removed > 0 then
                             local price = utils.get_price(item.name)
+                            stock.add(item.name, removed)
                             local sell_value = math.floor(removed * price * SELL_MULTIPLIER + 0.5)
                             company.credits = company.credits + sell_value
                             nauvis.mint(sell_value, "sell_chest:" .. force_name)
                             supply_demand.record_sell(item.name, removed)
                             trading_history.record_sell(data.force_name, item.name, removed, price)
-                            market_gui.update_all_forces_credits()
                         end
                     end
                 end

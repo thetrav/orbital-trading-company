@@ -1,5 +1,6 @@
 local utils = require("scripts.utils")
 local item_filter = require("scripts.item_filter")
+local stock = require("scripts.stock")
 
 local M = {}
 
@@ -19,10 +20,33 @@ local function update_credits_gui(player_index)
     if not player then return end
     local frame = player.gui.screen.otc_credits_frame
     if not frame then return end
-    local label = frame.otc_credits_label
-    if not label then return end
-    local credits = get_company_credits(player_index)
-    label.caption = utils.format_number(credits)
+
+    local player_data = storage.players and storage.players[player_index]
+    local company_name = player_data and player_data.company
+
+    local company_row = frame.otc_credits_company_row
+    if company_row then
+        local company_name_label = company_row.otc_credits_company_name
+        if company_name_label then
+            company_name_label.caption = company_name or "No Company"
+        end
+        local label = company_row.otc_credits_label
+        if label then
+            label.caption = utils.format_number(get_company_credits(player_index))
+        end
+    end
+
+    local personal_row = frame.otc_credits_personal_row
+    if personal_row then
+        local personal_name_label = personal_row.otc_credits_personal_name
+        if personal_name_label then
+            personal_name_label.caption = player.name
+        end
+        local personal_label = personal_row.otc_personal_credits_label
+        if personal_label then
+            personal_label.caption = utils.format_number(player_data and player_data.personal_credits or 0)
+        end
+    end
 end
 
 function M.update_credits_gui(player_index)
@@ -30,13 +54,8 @@ function M.update_credits_gui(player_index)
 end
 
 function M.update_all_forces_credits()
-    local updated = {}
     for _, player in pairs(game.connected_players) do
-        local player_data = storage.players and storage.players[player.index]
-        if player_data and player_data.company and not updated[player.index] then
-            update_credits_gui(player.index)
-            updated[player.index] = true
-        end
+        update_credits_gui(player.index)
     end
 end
 
@@ -82,9 +101,17 @@ function M.create_credits_gui(player)
     drag.style.height = 24
     drag.style.horizontally_stretchable = true
 
-    local company_row = frame.add { type = "flow", direction = "horizontal" }
+    local player_data = storage.players and storage.players[player.index]
+    local company_name = player_data and player_data.company
+
+    local company_row = frame.add { type = "flow", name = "otc_credits_company_row", direction = "horizontal" }
     company_row.style.vertical_align = "center"
-    company_row.add { type = "label", caption = "Co", style = "bold_label" }
+    company_row.add {
+        type = "label",
+        name = "otc_credits_company_name",
+        caption = company_name or "No Company",
+        style = "bold_label",
+    }
     local credits = get_company_credits(player.index)
     local label = company_row.add {
         type = "label",
@@ -95,10 +122,14 @@ function M.create_credits_gui(player)
     label.style.horizontal_align = "center"
     label.style.horizontally_stretchable = true
 
-    local personal_row = frame.add { type = "flow", direction = "horizontal" }
+    local personal_row = frame.add { type = "flow", name = "otc_credits_personal_row", direction = "horizontal" }
     personal_row.style.vertical_align = "center"
-    personal_row.add { type = "label", caption = "Me", style = "bold_label" }
-    local player_data = storage.players and storage.players[player.index]
+    personal_row.add {
+        type = "label",
+        name = "otc_credits_personal_name",
+        caption = player.name,
+        style = "bold_label",
+    }
     local personal_credits = player_data and player_data.personal_credits or 0
     local personal_label = personal_row.add {
         type = "label",
@@ -123,6 +154,20 @@ local function is_item_visible(item_name, player_index)
     if mode == "all" then return true end
     local player_data = storage.players and storage.players[player_index]
     return player_data and player_data.pinned_items and player_data.pinned_items[item_name] or false
+end
+
+function M.apply_stock_label(label, item_name)
+    local count = utils.get_stock(item_name)
+    if count <= 0 then
+        label.caption = "sold out"
+        label.style.font_color = {r = 0.9, g = 0.25, b = 0.25}
+    elseif count < stock.TARGET_STOCK / 4 then
+        label.caption = utils.format_number(count)
+        label.style.font_color = {r = 0.95, g = 0.7, b = 0.2}
+    else
+        label.caption = utils.format_number(count)
+        label.style.font_color = {r = 0.6, g = 0.6, b = 0.6}
+    end
 end
 
 function M.rebuild_market_list(player)
@@ -239,6 +284,14 @@ function M.rebuild_market_list(player)
                 caption = trend_text,
             }
             trend.style.font_color = trend_color
+
+            local stock_label = row.add {
+                type = "label",
+                name = "otc_stock_" .. item.name,
+            }
+            stock_label.style.horizontal_align = "right"
+            stock_label.style.horizontally_stretchable = true
+            M.apply_stock_label(stock_label, item.name)
             rendered = rendered + 1
         end
     end
@@ -253,13 +306,21 @@ function M.refresh_market_prices(player)
     if not list then return end
 
     for _, item in pairs(player_data.allowed_items or {}) do
-        local price_label = list["otc_price_" .. item.name]
+        local row = list["otc_market_row_" .. item.name]
+        if not row or not row.valid then goto continue end
+
+        local price_label = row["otc_price_" .. item.name]
         if price_label and price_label.valid then
             local effective_price = math.floor(utils.get_price(item.name) * BUY_MULTIPLIER + 0.5)
             price_label.caption = "₾" .. utils.format_number(effective_price)
         end
 
-        local trend_label = list["otc_trend_" .. item.name]
+        local stock_label = row["otc_stock_" .. item.name]
+        if stock_label and stock_label.valid then
+            M.apply_stock_label(stock_label, item.name)
+        end
+
+        local trend_label = row["otc_trend_" .. item.name]
         if trend_label and trend_label.valid then
             local offset = utils.get_price_offset(item.name)
             local trend_text = ""
@@ -274,6 +335,7 @@ function M.refresh_market_prices(player)
             trend_label.caption = trend_text
             trend_label.style.font_color = trend_color
         end
+        ::continue::
     end
 end
 
