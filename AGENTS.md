@@ -72,6 +72,11 @@ Factorio 2.0 mod "Orbital Trading Company" (`info.json`, version 0.1.0, depends 
 - `shape_registry.lua` — name → definition. Add a line here when you capture a new shape. Also read at the **data stage** by `prototypes/shape_place.lua`, so shape files must stay pure data (`scripts.shape_runs` is their only dependency).
 - `shape_place.lua` — the dev placer for shapes that are not bought from a gate: `/otc-place-shape` opens a list, picking one puts a per-shape placement item in the cursor, and left-clicking builds it at the marker's footprint. Admin-only, always placed for the Nauvis force. `on_marker_built` swaps the dummy marker for the real shape; `origin_from_marker` converts the marker's centre back to the shape's top-left origin.
 - `room_builder.lua` — shared placement helpers (`place_wall`, `place_gate`, `place_computer`, `register_gate`, `get_surface_force`, `clear_area`), extracted so hooks can use them without requiring `platform.lua`.
+- `nauvis_guard.lua` — Nauvis's property is read-only to everyone not in the Nauvis force. Two layers, because most player actions cannot be vetoed, only undone:
+  - **Hardened at build time** (`harden_shape`, called from `platform.place_shape`): every Nauvis entity gets `minable = false` and `destructible = false`. This is the only defence against a super-force build (Ctrl+Shift blueprint placement destroys obstructions outright, and nothing can undo that), and it also takes deconstruction planners out of play since only minable entities can be marked.
+  - **Undone by event**: GUI opening (which is what stops recipe changes and taking contents by hand), rotation, fast transfer, settings paste (shift+right/left-click), deconstruction and upgrade marks, building anywhere on the nauvis surface, mining, and picking items off the ground.
+
+  `ALWAYS_ALLOWED` exempts the fixtures players are meant to use — gate computer, company monitor, teleporter — because `room_builder.get_surface_force` puts *everything* on Nauvis onto the Nauvis force, so a blanket block would lock players out of expanding and joining companies.
 - `platform.lua` — now thin: `expand_from_gate` and `show_preview` resolve a definition, work out origin + rotation, add the connector, apply, and run the hook. `build_shape` places a definition at a fixed position (starting room, production room, mine blocks).
 
 ## Storage schema (persisted in `storage`)
@@ -87,6 +92,7 @@ Factorio 2.0 mod "Orbital Trading Company" (`info.json`, version 0.1.0, depends 
 - `trading_history`, `trading_history_head`, `trading_chart`, `chart_surface`.
 - `gates`, `gates_by_id`.
 - `shape_capture { pending }` — per-player pending capture name for `/otc-capture-shape`.
+- `nauvis_guard { snapshots, mined, pasted }` — `snapshots[player_index]` is the inventory of the protected entity currently hovered, kept so a fast transfer can be diffed and undone; `mined[player_index]` is the entity about to be mined, kept so it can be rebuilt; `pasted[player_index]` is the destination's settings before a paste, kept so they can be put back.
 - `shape_place { selected, clear }` — per-player shape choice for the placer and whether it clears the footprint first (defaults on).
 - `shape_config { entities, selection }` — `entities[unit_number] = { entity, role, item_left, item_right, label }` are the in-game role tags; `selection[player_index]` is the entity list the open config window is showing. Entries hold the entity so a mined one can be swept along with its label.
 

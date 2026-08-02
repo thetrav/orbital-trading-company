@@ -4,6 +4,7 @@ local shape_def = require("scripts.shape_def")
 local shape_registry = require("scripts.shape_registry")
 local shape_hooks = require("scripts.shape_hooks.init")
 local connector = require("scripts.shapes.connector")
+local nauvis_guard = require("scripts.nauvis_guard")
 
 local M = {}
 
@@ -67,6 +68,7 @@ function M.place_shape(surface, def, origin, steps, force_name, opts)
         ctx[key] = value
     end
     shape_hooks.run(def.hook, ctx)
+    nauvis_guard.harden_shape(ctx)
     return ctx
 end
 

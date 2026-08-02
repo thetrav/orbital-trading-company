@@ -3,6 +3,7 @@ local platform = require("scripts.platform")
 local shape_capture = require("scripts.shape_capture")
 local shape_config = require("scripts.shape_config")
 local shape_place = require("scripts.shape_place")
+local nauvis_guard = require("scripts.nauvis_guard")
 local pricing = require("scripts.pricing")
 local market_gui = require("scripts.market_gui")
 local expand_gui = require("scripts.expand_gui")
@@ -173,6 +174,7 @@ script.on_init(function()
     shape_capture.init()
     shape_config.init()
     shape_place.init()
+    nauvis_guard.init()
     ensure_company_setup()
 
     clear_enemies()
@@ -258,6 +260,7 @@ script.on_event(defines.events.on_player_rotated_entity, function(event)
     -- turn. The rebuild changes unit_number, so the config tag moves with it.
     local entity = event.entity
     if not entity or not entity.valid then return end
+    if nauvis_guard.on_rotated(event) then return end
     local old = entity.unit_number
     local rebuilt = supply_belts.enforce_exit(entity)
     if rebuilt then shape_config.migrate(old, rebuilt) end
@@ -297,6 +300,7 @@ script.on_configuration_changed(function()
     shape_capture.init()
     shape_config.init()
     shape_place.init()
+    nauvis_guard.init()
     ensure_company_setup()
     nauvis_industry.ensure_built()
 end)
@@ -341,19 +345,56 @@ script.on_event(defines.events.on_built_entity, function(event)
     if entity and entity.valid and shape_place.on_marker_built(entity, event.player_index) then
         return
     end
+    if nauvis_guard.on_built(entity, event.player_index) then return end
     if research.block_lab(entity, event.player_index) then return end
     buy_chest.register(entity)
     sell_chest.register(entity)
 end)
 
 script.on_event(defines.events.on_robot_built_entity, function(event)
+    if nauvis_guard.on_built(event.entity, nil) then return end
     research.block_lab(event.entity, nil)
+end)
+
+script.on_event(defines.events.on_pre_player_mined_item, function(event)
+    nauvis_guard.on_pre_mined(event)
+end)
+
+script.on_event(defines.events.on_pre_entity_settings_pasted, function(event)
+    nauvis_guard.on_pre_settings_pasted(event)
+end)
+
+script.on_event(defines.events.on_entity_settings_pasted, function(event)
+    nauvis_guard.on_settings_pasted(event)
+end)
+
+script.on_event(defines.events.on_marked_for_deconstruction, function(event)
+    nauvis_guard.on_marked_for_deconstruction(event)
+end)
+
+script.on_event(defines.events.on_marked_for_upgrade, function(event)
+    nauvis_guard.on_marked_for_upgrade(event)
+end)
+
+script.on_event(defines.events.on_picked_up_item, function(event)
+    nauvis_guard.on_picked_up(event)
+end)
+
+script.on_event(defines.events.on_player_fast_transferred, function(event)
+    nauvis_guard.on_fast_transferred(event)
+end)
+
+script.on_event(defines.events.on_selected_entity_changed, function(event)
+    local player = game.get_player(event.player_index)
+    if player then nauvis_guard.on_hover(player) end
 end)
 
 script.on_event(defines.events.on_gui_opened, function(event)
     local entity = event.entity
     local player = game.get_player(event.player_index)
     if not entity or not entity.valid or not player then return end
+
+    if nauvis_guard.on_gui_opened(player, entity) then return end
 
     if platform_gates.try_open_gate_computer(entity, player, expand_gui) then
         return
@@ -425,6 +466,7 @@ script.on_event(defines.events.on_entity_died, function(event)
 end)
 
 script.on_event(defines.events.on_player_mined_entity, function(event)
+    if nauvis_guard.on_mined(event) then return end
     local entity = event.entity
     if not entity or not entity.valid then return end
     local name = entity.name
