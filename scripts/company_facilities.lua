@@ -7,6 +7,10 @@ local M = {}
 -- was never a decision, only a delay. A company's ground presence stops there
 -- -- everything it actually chooses is built in space, off its own station's
 -- airlocks.
+--
+-- It goes in the company zone, which grows south from the compound: the state's
+-- own works march north, so the two never queue for the same ground and a
+-- player's rocket stays on the near side of the district.
 local FACILITIES = {
     { shape = "orbital_station", label = "launch bay" },
 }
@@ -32,13 +36,13 @@ function M.ensure_for(force_name)
 
     local sites = {}
     for _, facility in ipairs(FACILITIES) do
-        local centre = district.claim()
-        district.build(surface, facility.shape, centre, force_name, { owned_by_force = true })
+        local _, _, centre = district.build(surface, facility.shape, force_name,
+            { owned_by_force = true, zone = "company" })
         sites[#sites + 1] = {
             shape = facility.shape,
             label = facility.label,
-            x = centre.x,
-            y = centre.y,
+            x = centre and centre.x or 0,
+            y = centre and centre.y or 0,
         }
     end
 

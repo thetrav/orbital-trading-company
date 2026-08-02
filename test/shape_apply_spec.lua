@@ -69,9 +69,11 @@ describe("shape_def.apply", function()
             "resources must be created before entities; a drill built first finds nothing to mine")
     end)
 
+    -- The mine blocks lay no tiles of their own -- the district's grass is the
+    -- ground under them -- so this one asks a shape that carries its own floor.
     it("lays tiles before anything is built on them", function()
         local surface = recording_surface()
-        shape_def.apply(surface, registry.get("nauvis_mine_iron"), { x = 0, y = 0 }, 0,
+        shape_def.apply(surface, registry.get("nauvis_lab"), { x = 0, y = 0 }, 0,
             { force_name = "Nauvis" })
 
         local order = kinds(surface)
@@ -123,7 +125,7 @@ describe("shape_def.apply", function()
 
     it("routes each entity through the caller's force resolver", function()
         local surface = recording_surface()
-        shape_def.apply(surface, registry.get("nauvis_production_room"), { x = 0, y = 0 }, 0, {
+        shape_def.apply(surface, registry.get("nauvis_lab"), { x = 0, y = 0 }, 0, {
             force_name = "player",
             force_resolver = function() return "Nauvis" end,
         })

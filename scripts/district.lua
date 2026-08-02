@@ -4,25 +4,56 @@ local platform = require("scripts.platform")
 
 local M = {}
 
--- Everything otc builds on Nauvis lands in one slot of one grid, centred on the
--- player compound at the origin. Slots are claimed in rings, and a ring only
--- covers the half-plane north of spawn (Factorio's -y is screen-up), so the
--- district reads as a rectangle growing east, north and west with the starting
--- compound in the middle of its bottom edge.
---
--- 32 is the pitch because the production room is 27 tiles across and a slot has
--- to hold the widest shape with room for the power lattice outside it.
-local PITCH = 32
-local POST = PITCH / 2
-local PAD_MARGIN = 18
-local PAD_TILE = "refined-concrete"
+-- Everything otc builds on Nauvis packs into one grid of **modules**. A module
+-- is 22 x 20 and a sub-cell is a quarter of it, sized to the mine block, so
+-- four mines share a module and everything larger takes one whole. Nothing is
+-- asked to match exactly -- a shape that leaves slack in its cell just leaves
+-- slack.
+local SUB_W, SUB_H = 11, 10
+local MODULE_W, MODULE_H = SUB_W * 2, SUB_H * 2
+local MODULES_PER_ROW = 4
 
-M.PITCH = PITCH
+-- The gap between modules is two tiles: exactly the concrete path, and exactly
+-- the pole standing on it. That makes the pitch 24 x 22.
+local GUTTER = 2
+local PITCH_X, PITCH_Y = MODULE_W + GUTTER, MODULE_H + GUTTER
+
+-- Nauvis grows north from the compound, companies grow south. Row 0 of each
+-- clears the compound walls with the path to spare.
+local ZONES = {
+    nauvis = { row0 = -21, heading = -1 },
+    company = { row0 = 21, heading = 1 },
+}
+
+-- Power moves on big poles standing in the gutters, one at each corner of a
+-- module. Corner to corner is 24 tiles across and 22 down, inside a big pole's
+-- 30-tile wire reach, and every shape's own substation is inside its 18-tile
+-- reach of a corner -- so nothing else is needed and no pole stands in a room.
+local POLE = "big-electric-pole"
+local PATH_TILE = "concrete"
+local CLEARED_TYPES = { "tree", "simple-entity", "cliff", "fish" }
+
+-- The ground under a module. Nauvis is a green world, so the district lays a
+-- mix of its grasses rather than a slab: shapes that want something harder --
+-- the flask factory and the lab both do -- lay their own floor on top.
+local GRASS = { "grass-1", "grass-2", "grass-3", "grass-4" }
+local GRASS_PATCH = 4
+local HASH_MOD = 1048573
+
+M.SUB_W, M.SUB_H = SUB_W, SUB_H
+M.MODULE_W, M.MODULE_H = MODULE_W, MODULE_H
 
 function M.init()
     local state = storage.district or {}
-    state.taken = state.taken or {}
-    state.posts = state.posts or {}
+    -- The pre-module district numbered slots in rings and paved every one of
+    -- them. Nothing of that survives; a save from before it starts over.
+    if state.taken or state.next then
+        state = {}
+    end
+    state.zones = state.zones or {}
+    state.poles = state.poles or {}
+    state.paths = state.paths or {}
+    state.ground = state.ground or {}
     state.slots = state.slots or {}
     storage.district = state
     return state
@@ -32,120 +63,201 @@ local function state()
     return storage.district or M.init()
 end
 
---- Ring r holds 4r+1 slots: up the east column, west along the top, down the
---- west column. Walking them in that order is what draws the rectangle.
-local function ring_slot(r, i)
-    if i <= r then return r, -i end
-    if i <= 3 * r - 1 then return r - (i - r), -r end
-    return -r, -r + (i - 3 * r)
-end
-
---- Slots through the end of ring r, so an index can be resolved to a ring
---- without walking every slot before it.
-local function through(r)
-    return 2 * r * r + 3 * r
-end
-
---- The nth slot in claim order, as grid coordinates. Slot 0 is the first slot
---- of ring 1; the origin itself is the player compound and is never a slot.
-function M.slot_at(n)
-    local r = 1
-    while n >= through(r) do r = r + 1 end
-    local col, row = ring_slot(r, n - through(r - 1))
-    -- `-i` with i = 0 is negative zero, which is equal to 0 but stringifies as
-    -- "-0" -- so the row-0 slots would key differently from the same slot named
-    -- by claim_at and get handed out twice.
-    return col == 0 and 0 or col, row == 0 and 0 or row
-end
-
-function M.centre(col, row)
-    return { x = col * PITCH, y = row * PITCH }
-end
-
-local function key_of(col, row)
-    return string.format("%d,%d", col, row)
-end
-
---- Take a specific slot, for the fixtures Nauvis starts the game with.
-function M.claim_at(col, row)
-    state().taken[key_of(col, row)] = true
-    return M.centre(col, row)
-end
-
---- Take the next free slot in ring order.
-function M.claim()
-    local taken = state().taken
-    local n = 0
-    while true do
-        local col, row = M.slot_at(n)
-        local key = key_of(col, row)
-        if not taken[key] then
-            taken[key] = true
-            return M.centre(col, row), col, row
-        end
-        n = n + 1
+local function zone_state(name)
+    local st = state()
+    local zone = st.zones[name]
+    if not zone then
+        zone = { next = 0, open = {} }
+        st.zones[name] = zone
     end
+    return zone
 end
 
---- Where a shape's origin goes for its clearance box to sit centred in a slot.
+--- Modules fill a row of MODULES_PER_ROW centred on the compound, then start a
+--- new row further out. `zone` decides which way "further out" is.
+function M.module_centre(n, zone_name)
+    local zone = ZONES[zone_name or "nauvis"] or ZONES.nauvis
+    local col = (n % MODULES_PER_ROW) - (MODULES_PER_ROW - 1) / 2
+    local row = math.floor(n / MODULES_PER_ROW)
+    return {
+        x = col * PITCH_X,
+        y = zone.row0 + zone.heading * row * PITCH_Y,
+    }
+end
+
+--- How many sub-cells across and down a shape needs. A shape too big for a
+--- whole module is still given one and allowed to overhang into the path.
+function M.footprint(def)
+    local box = def.clearance_box or shape_def.tile_bounds(def)
+    if not box then return 1, 1 end
+    local w = box[2][1] - box[1][1] + 1
+    local h = box[2][2] - box[1][2] + 1
+    return math.min(2, math.ceil(w / SUB_W)), math.min(2, math.ceil(h / SUB_H))
+end
+
+--- Centre of the `index`th sub-cell of the given size within a module.
+function M.sub_centre(centre, cols, rows, index)
+    local across = 2 / cols
+    local w, h = cols * SUB_W, rows * SUB_H
+    return {
+        x = centre.x - MODULE_W / 2 + w * (index % across + 0.5),
+        y = centre.y - MODULE_H / 2 + h * (math.floor(index / across) + 0.5),
+    }
+end
+
+--- Take the next sub-cell that fits this shape. Each size keeps its own
+--- part-filled module per zone, so mine blocks queue up four to a module
+--- however many other things are built between them.
+function M.claim(def, zone_name)
+    zone_name = zone_name or "nauvis"
+    local zone = zone_state(zone_name)
+    local cols, rows = M.footprint(def)
+    local key = cols .. "x" .. rows
+    local capacity = (2 / cols) * (2 / rows)
+
+    local open = zone.open[key]
+    if not open or open.used >= capacity then
+        open = { module = zone.next, used = 0 }
+        zone.next = zone.next + 1
+        zone.open[key] = open
+    end
+
+    local index = open.used
+    open.used = index + 1
+    local centre = M.module_centre(open.module, zone_name)
+    return M.sub_centre(centre, cols, rows, index), centre
+end
+
+--- Where a shape's origin goes for its clearance box to sit centred in a cell.
+--- A shape as wide as its cell lands half a tile either way; rounding down puts
+--- the overhang on the side the cell has, rather than out over the path.
 function M.origin_for(def, centre)
     local box = def.clearance_box or shape_def.tile_bounds(def)
     if not box then return { x = centre.x, y = centre.y } end
     return {
-        x = math.floor(centre.x - (box[1][1] + box[2][1]) / 2 + 0.5),
-        y = math.floor(centre.y - (box[1][2] + box[2][2]) / 2 + 0.5),
+        x = math.floor(centre.x - (box[1][1] + box[2][1]) / 2),
+        y = math.floor(centre.y - (box[1][2] + box[2][2]) / 2),
     }
 end
 
-function M.pad_box(centre)
-    return {
-        { centre.x - PAD_MARGIN, centre.y - PAD_MARGIN },
-        { centre.x + PAD_MARGIN, centre.y + PAD_MARGIN },
-    }
+--- Which grass a tile gets. Integer arithmetic against a prime modulus, so the
+--- mix is the same on every peer -- a float hash could differ between platforms
+--- and desync the moment a module is laid.
+local function grass_at(x, y)
+    local px = math.floor(x / GRASS_PATCH) % 4096
+    local py = math.floor(y / GRASS_PATCH) % 4096
+    local h = (px * 1021 + py * 3571 + 104729) % HASH_MOD
+    h = (h * 8191) % HASH_MOD
+    h = (h * 65537) % HASH_MOD
+    return GRASS[h % #GRASS + 1]
 end
 
-local function pad_layer(centre)
-    local tiles = {}
-    for x = centre.x - PAD_MARGIN, centre.x + PAD_MARGIN do
-        for y = centre.y - PAD_MARGIN, centre.y + PAD_MARGIN do
-            tiles[#tiles + 1] = { x, y }
+local function box_of(centre, w, h)
+    return centre.x - w / 2, centre.y - h / 2, centre.x + w / 2 - 1, centre.y + h / 2 - 1
+end
+
+local function clear_area(surface, area)
+    for _, type_name in ipairs(CLEARED_TYPES) do
+        for _, entity in ipairs(surface.find_entities_filtered { area = area, type = type_name }) do
+            if entity.valid then entity.destroy() end
         end
     end
-    return { { name = PAD_TILE, tiles = tiles } }
+    surface.destroy_decoratives { area = area }
 end
 
---- A substation at each of the slot's eight border points. Neighbours share
---- their border, so the lattice is continuous however the rectangle grows: 16
---- tiles apart is inside a substation's 18-tile wire reach, and no shape in the
---- district reaches past 14 tiles from its slot centre, so the ring never
---- collides with what it powers.
-local function power_lattice(surface, centre, force_name)
-    local posts = state().posts
-    for _, offset in ipairs {
-        { -POST, -POST }, { 0, -POST }, { POST, -POST },
-        { -POST, 0 }, { POST, 0 },
-        { -POST, POST }, { 0, POST }, { POST, POST },
-    } do
-        local x, y = centre.x + offset[1], centre.y + offset[2]
-        local key = x .. "," .. y
-        if not posts[key] then
-            posts[key] = true
-            local post = surface.create_entity {
-                name = "substation",
-                position = { x, y },
-                force = force_name,
-                create_build_effect_smoke = false,
-            }
-            if post then
-                post.minable = false
-                post.destructible = false
+--- Lay a module's ground. Done once per module, before anything is built on it,
+--- and it is what stops a cell that generated as a lake from drowning a shape.
+local function lay_ground(surface, centre)
+    local st = state()
+    local key = centre.x .. "," .. centre.y
+    if st.ground[key] then return end
+    st.ground[key] = true
+
+    local left, top, right, bottom = box_of(centre, MODULE_W, MODULE_H)
+    clear_area(surface, { { left, top }, { right + 1, bottom + 1 } })
+    local tiles = {}
+    for x = left, right do
+        for y = top, bottom do
+            tiles[#tiles + 1] = { name = grass_at(x, y), position = { x, y } }
+        end
+    end
+    surface.set_tiles(tiles)
+end
+
+--- The gutter round a module, as the inclusive tile bounds of the whole ring:
+--- the module's own content sits GUTTER tiles inside it on every side. A module
+--- shares each strip with its neighbour, which is why the ring is a gutter
+--- wider than the pitch.
+local function ring(centre)
+    return centre.x - MODULE_W / 2 - GUTTER, centre.x + MODULE_W / 2 + GUTTER - 1,
+        centre.y - MODULE_H / 2 - GUTTER, centre.y + MODULE_H / 2 + GUTTER - 1
+end
+
+function M.ring_box(centre)
+    local left, right, top, bottom = ring(centre)
+    return { { left, top }, { right, bottom } }
+end
+
+--- Lay the walkway the power line stands on: the whole gutter, all the way
+--- round. Tiles already laid are skipped, so the edge a module shares with its
+--- neighbour is paved once.
+local function lay_path(surface, segments)
+    local paths = state().paths
+    local tiles = {}
+    for _, segment in ipairs(segments) do
+        clear_area(surface, { { segment[1][1], segment[1][2] },
+            { segment[2][1] + 1, segment[2][2] + 1 } })
+        for x = segment[1][1], segment[2][1] do
+            for y = segment[1][2], segment[2][2] do
+                local key = x .. "," .. y
+                if not paths[key] then
+                    paths[key] = true
+                    tiles[#tiles + 1] = { name = PATH_TILE, position = { x, y } }
+                end
             end
+        end
+    end
+    if #tiles > 0 then surface.set_tiles(tiles) end
+end
+
+local function ensure_pole(surface, x, y)
+    local poles = state().poles
+    local key = x .. "," .. y
+    if poles[key] then return end
+    poles[key] = true
+    local pole = surface.create_entity {
+        name = POLE,
+        position = { x, y },
+        force = "Nauvis",
+        create_build_effect_smoke = false,
+    }
+    if pole then
+        pole.minable = false
+        pole.destructible = false
+    end
+end
+
+--- Run the line round a module. Poles and path are both deduped, so a module
+--- built next to one that already exists adds only the side that is new.
+local function connect(surface, centre)
+    local left, right, top, bottom = ring(centre)
+    lay_path(surface, {
+        { { left, top }, { left + GUTTER - 1, bottom } },
+        { { right - GUTTER + 1, top }, { right, bottom } },
+        { { left, top }, { right, top + GUTTER - 1 } },
+        { { left, bottom - GUTTER + 1 }, { right, bottom } },
+    })
+    -- A 2x2 pole sits on the tile pair it is named after and the one before it,
+    -- so these four stand squarely in the gutter strips laid above.
+    for _, x in ipairs { left + GUTTER - 1, right } do
+        for _, y in ipairs { top + GUTTER - 1, bottom } do
+            ensure_pole(surface, x, y)
         end
     end
 end
 
 function M.chart(surface, centre, force)
-    local box = M.pad_box(centre)
+    local box = M.ring_box(centre)
     local area = { { box[1][1] - 2, box[1][2] - 2 }, { box[2][1] + 2, box[2][2] + 2 } }
     if force then
         force.chart(surface, area)
@@ -156,18 +268,20 @@ function M.chart(surface, centre, force)
     end
 end
 
---- Charts everything claimed so far, for a force that did not exist when the
---- slots were built.
+--- Charts every module built so far, for a force that did not exist when they
+--- went up.
 function M.chart_all(surface, force)
     for _, slot in ipairs(state().slots) do
-        M.chart(surface, { x = slot.x, y = slot.y }, force)
+        M.chart(surface, { x = slot.module_x, y = slot.module_y }, force)
     end
 end
 
---- Lay the pad, build the shape centred in the slot, and tie it into the grid.
---- `owner` is the force the shape belongs to; the lattice always belongs to
+--- Claim a cell, build the shape in it, and run the power line to it. `owner`
+--- is the force the shape belongs to; the poles and the path always belong to
 --- Nauvis, because the grid is state infrastructure everyone shares.
-function M.build(surface, shape_name, centre, owner, opts)
+--- `opts.zone` picks which way the district grows: "nauvis" north, "company"
+--- south.
+function M.build(surface, shape_name, owner, opts)
     local def = shape_registry.get(shape_name)
     if not def then
         log("district: unknown shape " .. tostring(shape_name))
@@ -175,18 +289,27 @@ function M.build(surface, shape_name, centre, owner, opts)
     end
     opts = opts or {}
 
+    local centre, module_centre = M.claim(def, opts.zone)
+    lay_ground(surface, module_centre)
+
     local origin = M.origin_for(def, centre)
     local ctx = platform.build_shape(surface, shape_name, origin, owner, {
-        extra_tile_layers = pad_layer(centre),
         owned_by_force = opts.owned_by_force,
         context = opts.context,
     })
-    power_lattice(surface, centre, "Nauvis")
+    connect(surface, module_centre)
 
     local st = state()
-    st.slots[#st.slots + 1] = { x = centre.x, y = centre.y, shape = shape_name, owner = owner }
-    M.chart(surface, centre)
-    return ctx, origin
+    st.slots[#st.slots + 1] = {
+        x = centre.x,
+        y = centre.y,
+        module_x = module_centre.x,
+        module_y = module_centre.y,
+        shape = shape_name,
+        owner = owner,
+    }
+    M.chart(surface, module_centre)
+    return ctx, origin, centre
 end
 
 return M

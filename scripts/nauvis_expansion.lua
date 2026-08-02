@@ -20,37 +20,45 @@ M.OPTIONS = {
     {
         key = "iron_mine",
         shape = "nauvis_mine_iron",
-        label = "Iron mine block",
-        tooltip = "Two more drills on a fresh iron patch, feeding Nauvis's warehouse. "
-            .. "Carries its own solar.",
+        label = "Iron mine",
+        tooltip = "Four more drills on a fresh iron patch, feeding Nauvis's warehouse. "
+            .. "Brings no generation of its own -- it runs off the district grid.",
     },
     {
         key = "copper_mine",
         shape = "nauvis_mine_copper",
-        label = "Copper mine block",
-        tooltip = "Two more drills on a fresh copper patch, feeding Nauvis's warehouse. "
-            .. "Carries its own solar.",
+        label = "Copper mine",
+        tooltip = "Four more drills on a fresh copper patch, feeding Nauvis's warehouse. "
+            .. "Brings no generation of its own -- it runs off the district grid.",
     },
     {
         key = "coal_mine",
         shape = "nauvis_mine_coal",
-        label = "Coal mine block",
-        tooltip = "Two more drills on a fresh coal patch, feeding Nauvis's warehouse. "
-            .. "Carries its own solar.",
+        label = "Coal mine",
+        tooltip = "Four more drills on a fresh coal patch, feeding Nauvis's warehouse. "
+            .. "Brings no generation of its own -- it runs off the district grid.",
     },
     {
         key = "stone_mine",
         shape = "stone_mine",
         label = "Stone mine",
-        tooltip = "More drills on a fresh stone patch, feeding Nauvis's warehouse. "
+        tooltip = "Four more drills on a fresh stone patch, feeding Nauvis's warehouse. "
             .. "Brings no generation of its own -- it runs off the district grid.",
     },
     {
-        key = "science_factory",
+        key = "automation_science",
         shape = "red_flask_factory",
-        label = "Science factory",
-        tooltip = "Another red science line, so research runs faster. Brings no power of "
-            .. "its own -- build a solar field first or it sits idle.",
+        label = "Automation science",
+        tooltip = "Another automation science line, turning plates out of the warehouse "
+            .. "into flasks. Brings no power of its own -- build a solar field first or "
+            .. "it sits idle.",
+    },
+    {
+        key = "lab_district",
+        shape = "nauvis_lab",
+        label = "Lab district",
+        tooltip = "Twelve more labs to spend the flasks in, so research runs faster. "
+            .. "Brings no power of its own -- build a solar field first or it sits idle.",
     },
 }
 
@@ -233,7 +241,7 @@ function M.build(key)
     local surface = game.surfaces["nauvis"]
     if not option or not surface then return false end
 
-    district.build(surface, option.shape, district.claim(), nauvis.FORCE_NAME)
+    district.build(surface, option.shape, nauvis.FORCE_NAME)
 
     local st = state()
     st.built[key] = (st.built[key] or 0) + 1

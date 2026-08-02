@@ -17,9 +17,9 @@ function M.run()
     surface.request_to_generate_chunks({ 0, -32 }, 6)
     surface.force_generate_chunk_requests()
 
-    for _, n in ipairs { 0, 1, 4, 5, 9, 13, 14 } do
-        local col, row = district.slot_at(n)
-        log(string.format("PROBE slot %d -> col=%d row=%d", n, col, row))
+    for _, n in ipairs { 0, 1, 2, 3, 4 } do
+        local centre = district.module_centre(n)
+        log(string.format("PROBE module %d -> %d,%d", n, centre.x, centre.y))
     end
 
     -- Well away from anything otc places, so whatever is here is worldgen.
@@ -30,13 +30,22 @@ function M.run()
     log("PROBE enemies anywhere: " .. count(surface, { force = "enemy" }))
 
     local room = surface.find_entities_filtered { name = "lab", force = "Nauvis" }[1]
-    log("PROBE production room lab at: " .. (room
+    log("PROBE first lab at: " .. (room
         and string.format("%.0f,%.0f", room.position.x, room.position.y) or "MISSING"))
 
-    local taken = {}
-    for key in pairs(storage.district.taken) do taken[#taken + 1] = key end
-    table.sort(taken)
-    log("PROBE slots taken by fixtures: " .. table.concat(taken, " "))
+    local placed = {}
+    for _, slot in ipairs(storage.district.slots) do
+        placed[#placed + 1] = string.format("%s@%d,%d", slot.shape, slot.x, slot.y)
+    end
+    log("PROBE cells taken by fixtures: " .. table.concat(placed, " "))
+    local poles = 0
+    for _ in pairs(storage.district.poles) do poles = poles + 1 end
+    local zones = {}
+    for name, zone in pairs(storage.district.zones) do
+        zones[#zones + 1] = name .. "=" .. zone.next
+    end
+    table.sort(zones)
+    log("PROBE modules used: " .. table.concat(zones, " ") .. " poles: " .. poles)
     log("PROBE drills: " .. count(surface, { name = "electric-mining-drill" })
         .. " stone ore: " .. count(surface, { name = "stone", type = "resource" }))
 
@@ -95,14 +104,16 @@ function M.run()
     end
 
     local networks = {}
-    for _, post in ipairs(surface.find_entities_filtered { name = "substation" }) do
+    for _, post in ipairs(surface.find_entities_filtered {
+        name = { "substation", "big-electric-pole" },
+    }) do
         local id = post.electric_network_id
         networks[id] = (networks[id] or 0) + 1
     end
     local ids = {}
     for id, n in pairs(networks) do ids[#ids + 1] = id .. "(" .. n .. ")" end
     table.sort(ids)
-    log("PROBE substation networks: " .. table.concat(ids, " "))
+    log("PROBE pole networks: " .. table.concat(ids, " "))
 end
 
 return M

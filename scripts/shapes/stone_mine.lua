@@ -2,53 +2,11 @@
 -- Re-capture in game with: /otc-capture-shape stone_mine
 -- Coordinates are shape-local; the canonical orientation is a gate on the
 -- west edge with the room extending east. See README.md "Capturing shapes".
-local runs = require("scripts.shape_runs")
-
 return {
     format = 1,
     name = "stone_mine",
     hook = "stock_belts",
     clearance_box = { { 0, 0 }, { 8, 9 } },
-    tile_layers = {
-        {
-            name = "grass-2",
-            correct = true,
-            tiles = runs.expand {
-                { 0, 5, 8 },
-                { 1, 5, 8 },
-                { 2, 0, 1 },
-                { 2, 4, 8 },
-                { 3, 0, 8 },
-                { 4, 0, 7 },
-                { 5, 0, 7 },
-                { 6, 0, 6 },
-                { 7, 0, 5 },
-                { 8, 0, 4 },
-                { 9, 0, 4 },
-            },
-        },
-        {
-            name = "grass-4",
-            correct = true,
-            tiles = runs.expand {
-                { 0, 0, 4 },
-                { 1, 0, 4 },
-                { 2, 2, 3 },
-            },
-        },
-        {
-            name = "red-desert-0",
-            correct = true,
-            tiles = runs.expand {
-                { 4, 8, 8 },
-                { 5, 8, 8 },
-                { 6, 7, 8 },
-                { 7, 6, 8 },
-                { 8, 5, 8 },
-                { 9, 5, 8 },
-            },
-        },
-    },
     entities = {
         { name = "substation", position = { 5, 1 } },
         { name = "electric-mining-drill", position = { 2.5, 3.5 }, direction = 4 },
@@ -116,8 +74,10 @@ return {
     },
     notes = {
         "Captured from nauvis at origin -77,-5. Placed, not bought, so it has no",
-        "connection anchor; nauvis_industry lists it in MINE_BLOCKS.",
+        "connection anchor.",
+        "The template every mine block follows: the same 9x10 with different ore.",
         "role=intake belts are registered as stock intakes by the hook.",
-        "No generation of its own: the substation draws off the coal block's grid.",
+        "Lays no tiles: the district's grass is the ground under every mine.",
+        "No generation of its own: the substation reaches the district's pole line.",
     },
 }

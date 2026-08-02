@@ -4,22 +4,23 @@ local district = require("scripts.district")
 
 local M = {}
 
--- What Nauvis starts the game owning, placed in named slots of the expansion
--- district rather than at hand-picked coordinates -- the fixtures and the
--- voted expansions share one geography. These fill ring 1 exactly, the
--- rectangle immediately around spawn: the production room takes the slot due
--- north so players can watch it work, the four mine blocks take the rest, and
--- everything anyone builds afterwards grows outward from there.
+-- What Nauvis starts the game owning. Order is geography: the district hands
+-- out cells in claim order, so the four mine blocks take the first module (a
+-- quarter each) and the flask factory, the lab district and the solar field
+-- take one each. That is one row of four modules immediately north of the
+-- compound, and the whole loop -- ore to plates to flasks to research -- with
+-- one power line running through it.
 --
--- `stone_mine` brings no generation of its own -- it used to sit next to the
--- coal block and draw off its grid. The district's substation lattice is one
--- network, so it is still powered wherever its slot lands.
+-- No fixture brings generation of its own. The line is one network, so they all
+-- run off the solar field wherever it lands.
 local FIXTURES = {
-    { shape = "nauvis_production_room", col = 0, row = -1 },
-    { shape = "nauvis_mine_iron", col = -1, row = -1 },
-    { shape = "nauvis_mine_copper", col = 1, row = -1 },
-    { shape = "nauvis_mine_coal", col = -1, row = 0 },
-    { shape = "stone_mine", col = 1, row = 0 },
+    "nauvis_mine_iron",
+    "nauvis_mine_copper",
+    "nauvis_mine_coal",
+    "stone_mine",
+    "red_flask_factory",
+    "nauvis_lab",
+    "solar_field",
 }
 
 local function place(surface, name, position, direction, extra)
@@ -46,9 +47,8 @@ local function tile_center(x, y)
 end
 
 local function build_fixtures(surface)
-    for _, fixture in ipairs(FIXTURES) do
-        district.build(surface, fixture.shape,
-            district.claim_at(fixture.col, fixture.row), nauvis.FORCE_NAME)
+    for _, shape in ipairs(FIXTURES) do
+        district.build(surface, shape, nauvis.FORCE_NAME)
     end
 end
 
