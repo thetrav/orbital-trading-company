@@ -288,14 +288,17 @@ end)
 
 describe("shape definitions", function()
     it("declare a hook that exists", function()
-        local hooks = {
-            room_gates = true, orbital_station = true, station_interior = true,
-            starting_room = true, nauvis_production_room = true, nauvis_mine_block = true,
-        }
+        -- Read the registration table as text: requiring the hooks pulls in modules
+        -- that touch the runtime globals this spec does not stand up.
+        local source = assert(io.open("scripts/shape_hooks/init.lua")):read("a")
+        local hooks = {}
+        for hook_name in source:gmatch("([%w_]+)%s*=%s*require%(\"scripts%.shape_hooks%.") do
+            hooks[hook_name] = true
+        end
         for _, name in ipairs(registry.names()) do
             local def = registry.get(name)
             if def.hook then
-                assert.is_true(hooks[def.hook] == true, name .. " names unknown hook " .. def.hook)
+                assert.is_truthy(hooks[def.hook], name .. " names unknown hook " .. def.hook)
             end
         end
     end)

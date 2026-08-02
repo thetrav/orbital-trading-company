@@ -8,26 +8,21 @@ local SCARCITY_EXPONENT_GLUT = 2
 M.TARGET_STOCK = TARGET_STOCK
 M.SCARCITY_CAP = SCARCITY_CAP
 
--- Nauvis mines its own ore but has no furnaces: plates are supplied entirely by
--- players, so they must not seed with a free starting stockpile.
-local ZERO_SEED_ITEMS = {
-    ["iron-plate"] = true,
-    ["copper-plate"] = true,
-}
-
 function M.init()
     storage.stock = storage.stock or {}
     storage.stock.items = storage.stock.items or {}
 end
 
+-- Nauvis owns nothing it has not mined, made or been sold: an item with no entry
+-- is genuinely absent, and reading it must not conjure a starting stockpile.
 function M.get(item_name)
     if not storage.stock then return 0 end
-    local count = storage.stock.items[item_name]
-    if count == nil then
-        count = ZERO_SEED_ITEMS[item_name] and 0 or TARGET_STOCK
-        storage.stock.items[item_name] = count
-    end
-    return count
+    return storage.stock.items[item_name] or 0
+end
+
+function M.items()
+    if not storage.stock then return {} end
+    return storage.stock.items
 end
 
 function M.set(item_name, count)

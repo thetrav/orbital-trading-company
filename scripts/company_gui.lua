@@ -5,6 +5,7 @@ local nauvis = require("scripts.nauvis")
 local utils = require("scripts.utils")
 local item_filter = require("scripts.item_filter")
 local research = require("scripts.research")
+local stock = require("scripts.stock")
 
 local M = {}
 
@@ -280,6 +281,51 @@ function M.selected_research_name(player)
     return options[index]
 end
 
+local ROW_PREFIX = "otc_company_nauvis_stock_row_"
+local COUNT_PREFIX = "otc_company_nauvis_stock_count_"
+
+-- The warehouse holds things players cannot trade -- the science packs Nauvis makes
+-- for itself, above all -- so the listing is the tradeable set plus whatever else is
+-- actually on the shelves, rather than item_filter's list alone.
+local function warehouse_items(player_data)
+    local seen = {}
+    local items = {}
+    for _, item in pairs(player_data and player_data.allowed_items or {}) do
+        if not seen[item.name] then
+            seen[item.name] = true
+            table.insert(items, item)
+        end
+    end
+    for name, count in pairs(stock.items()) do
+        if count > 0 and not seen[name] then
+            local prototype = prototypes.item[name]
+            if prototype then
+                seen[name] = true
+                table.insert(items, { name = name, prototype = prototype })
+            end
+        end
+    end
+    table.sort(items, function(a, b)
+        if a.prototype.order == b.prototype.order then return a.name < b.name end
+        return a.prototype.order < b.prototype.order
+    end)
+    return items
+end
+
+local function add_stock_row(stock_list, item, index)
+    local row = stock_list.add {
+        type = "flow", name = ROW_PREFIX .. item.name, direction = "horizontal", index = index,
+    }
+    row.style.vertical_align = "center"
+    row.add { type = "sprite", sprite = "item/" .. item.name }
+    local name_label = row.add { type = "label", caption = item.prototype.localised_name }
+    name_label.style.horizontally_stretchable = true
+    local count_label = row.add { type = "label", name = COUNT_PREFIX .. item.name }
+    count_label.style.horizontal_align = "right"
+    market_gui.apply_stock_label(count_label, item.name)
+    return row
+end
+
 local function rebuild_nauvis_tab(player, content)
     for _, child in ipairs(content.children) do child.destroy() end
 
@@ -353,17 +399,8 @@ local function rebuild_nauvis_tab(player, content)
     if not player_data.allowed_items then
         player_data.allowed_items = item_filter.get_allowed_items(player.force)
     end
-    for _, item in pairs(player_data.allowed_items or {}) do
-        local row = stock_list.add {
-            type = "flow", name = "otc_company_nauvis_stock_row_" .. item.name, direction = "horizontal",
-        }
-        row.style.vertical_align = "center"
-        row.add { type = "sprite", sprite = "item/" .. item.name }
-        local name_label = row.add { type = "label", caption = item.prototype.localised_name }
-        name_label.style.horizontally_stretchable = true
-        local count_label = row.add { type = "label", name = "otc_company_nauvis_stock_count_" .. item.name }
-        count_label.style.horizontal_align = "right"
-        market_gui.apply_stock_label(count_label, item.name)
+    for i, item in ipairs(warehouse_items(player_data)) do
+        add_stock_row(stock_list, item, i)
     end
 
     content.add { type = "line" }
@@ -433,9 +470,17 @@ function M.refresh_nauvis_stock(player)
     local stock_frame = content.otc_company_nauvis_stock_frame
     local stock_list = stock_frame and stock_frame.otc_company_nauvis_stock_list
     if not stock_list then return end
-    for _, item in pairs(player_data and player_data.allowed_items or {}) do
-        local row = stock_list["otc_company_nauvis_stock_row_" .. item.name]
-        local count_label = row and row["otc_company_nauvis_stock_count_" .. item.name]
+
+    local items = warehouse_items(player_data)
+    local wanted = {}
+    for _, item in pairs(items) do wanted[item.name] = true end
+    for _, row in pairs(stock_list.children) do
+        local item_name = row.name and string.match(row.name, "^otc_company_nauvis_stock_row_(.+)$")
+        if item_name and not wanted[item_name] then row.destroy() end
+    end
+    for i, item in ipairs(items) do
+        local row = stock_list[ROW_PREFIX .. item.name] or add_stock_row(stock_list, item, i)
+        local count_label = row[COUNT_PREFIX .. item.name]
         if count_label and count_label.valid then
             market_gui.apply_stock_label(count_label, item.name)
         end

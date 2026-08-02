@@ -10,6 +10,7 @@ local MINE_BLOCKS = {
     { shape = "nauvis_mine_iron", x = -120, y = -4 },
     { shape = "nauvis_mine_copper", x = -105, y = -4 },
     { shape = "nauvis_mine_coal", x = -90, y = -4 },
+    { shape = "stone_mine", x = -75, y = -4 },
 }
 
 local function place(surface, name, position, direction, extra)

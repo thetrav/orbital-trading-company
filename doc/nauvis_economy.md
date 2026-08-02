@@ -75,13 +75,11 @@ At `stock <= 0` a buy chest receives **nothing** — no partial fill, no emergen
 This is the point of the whole change: the economy is fixed, not infinite, and an item
 nobody produces stops being purchasable until somebody produces it.
 
-The starting seed keeps this from being a cold start for everything *except* what players
-are meant to supply: **every tradeable item seeds at `TARGET_STOCK`** on first read, so day
-one looks like today's economy at 1.0× multiplier — **except iron plate and copper plate,
-which seed at zero.** Nauvis mines ore but has no furnaces; plates are the one thing it
-cannot make for itself, so it starts with none and the price starts pinned at the 20×
-ceiling until players sell it some. That is what makes smelting the obvious first business
-rather than an optional one.
+There is **no starting seed at all**: the warehouse begins empty and an item with no entry
+reads as zero. Nauvis owns only what it has mined, made, or been sold, so every price starts
+pinned at the 20× ceiling and every shelf is stocked by somebody. That is what makes
+smelting — and supplying Nauvis generally — the obvious first business rather than an
+optional one.
 
 Consequence worth naming: with no starting plate stock and no furnaces, Nauvis's own
 assemblers sit idle at game start too — the production room genuinely waits on players.
@@ -237,8 +235,8 @@ storage.nauvis_industry = {
 
 Extend `ensure_company_setup()` in `control.lua`:
 
-1. Create `storage.stock.items`, seeding every `item_filter`-allowed item at
-   `TARGET_STOCK` if absent. Existing saves therefore start at 1.0× and nothing lurches.
+1. Create `storage.stock.items`. Nothing is seeded; whatever an existing save already
+   accumulated is kept.
 2. If `storage.nauvis_industry.built` is false, build the production room and the mine.
    This makes the whole feature land on existing saves, not just new games.
 3. Disable science-pack and lab recipes on every existing company force, and sync Nauvis's
