@@ -1,6 +1,8 @@
 local platform_gates = require("scripts.platform_gates")
 local platform = require("scripts.platform")
 local shape_capture = require("scripts.shape_capture")
+local shape_config = require("scripts.shape_config")
+local shape_place = require("scripts.shape_place")
 local pricing = require("scripts.pricing")
 local market_gui = require("scripts.market_gui")
 local expand_gui = require("scripts.expand_gui")
@@ -169,6 +171,8 @@ script.on_init(function()
     supply_demand.init()
     trading_history.init()
     shape_capture.init()
+    shape_config.init()
+    shape_place.init()
     ensure_company_setup()
 
     clear_enemies()
@@ -197,13 +201,17 @@ script.on_load(function()
 end)
 
 shape_capture.register_commands()
+shape_config.register_commands()
+shape_place.register_commands()
 
 script.on_event(defines.events.on_player_selected_area, function(event)
     shape_capture.on_selected_area(event, false)
+    shape_config.on_selected_area(event, false)
 end)
 
 script.on_event(defines.events.on_player_alt_selected_area, function(event)
     shape_capture.on_selected_area(event, true)
+    shape_config.on_selected_area(event, true)
 end)
 
 script.on_event(defines.events.on_player_created, function(event)
@@ -244,6 +252,22 @@ script.on_event(defines.events.on_lua_shortcut, function(event)
     end
 end)
 
+script.on_event(defines.events.on_player_rotated_entity, function(event)
+    -- Rotating an underground belt flips it between entrance and exit; a supply
+    -- belt must stay an exit, so the rotation is turned back into a 180 degree
+    -- turn. The rebuild changes unit_number, so the config tag moves with it.
+    local entity = event.entity
+    if not entity or not entity.valid then return end
+    local old = entity.unit_number
+    local rebuilt = supply_belts.enforce_exit(entity)
+    if rebuilt then shape_config.migrate(old, rebuilt) end
+end)
+
+script.on_event(defines.events.on_player_cursor_stack_changed, function(event)
+    local player = game.get_player(event.player_index)
+    if player then shape_place.handle_cursor_changed(player) end
+end)
+
 script.on_event(defines.events.on_player_display_scale_changed, function(event)
     local player = game.get_player(event.player_index)
     if player then trading_gui.handle_display_scale_changed(player) end
@@ -271,6 +295,8 @@ end)
 
 script.on_configuration_changed(function()
     shape_capture.init()
+    shape_config.init()
+    shape_place.init()
     ensure_company_setup()
     nauvis_industry.ensure_built()
 end)
@@ -309,9 +335,15 @@ script.on_nth_tick(1, function()
 end)
 
 script.on_event(defines.events.on_built_entity, function(event)
-    if research.block_lab(event.created_entity, event.player_index) then return end
-    buy_chest.register(event.created_entity)
-    sell_chest.register(event.created_entity)
+    -- 2.0 renamed this field; `created_entity` reads nil and silently disables
+    -- everything below it.
+    local entity = event.entity
+    if entity and entity.valid and shape_place.on_marker_built(entity, event.player_index) then
+        return
+    end
+    if research.block_lab(entity, event.player_index) then return end
+    buy_chest.register(entity)
+    sell_chest.register(entity)
 end)
 
 script.on_event(defines.events.on_robot_built_entity, function(event)
@@ -416,6 +448,25 @@ end)
 
 
 script.on_event(defines.events.on_gui_click, function(event)
+    if event.element.name == "otc_shape_config_close" then
+        local player = game.get_player(event.player_index)
+        if player then shape_config.close(player) end
+        return
+    end
+
+    if event.element.name == "otc_place_close" then
+        local player = game.get_player(event.player_index)
+        if player then shape_place.close(player) end
+        return
+    end
+
+    local place_shape = string.match(event.element.name, "^otc_place_shape_(.+)$")
+    if place_shape then
+        local player = game.get_player(event.player_index)
+        if player then shape_place.handle_selection(player, place_shape) end
+        return
+    end
+
     if string.match(event.element.name, "^otc_company_") then
         local player = game.get_player(event.player_index)
         if player then company_gui.handle_click(player, event.element.name) end
@@ -498,9 +549,24 @@ script.on_event(defines.events.on_gui_selected_tab_changed, function(event)
     if player then company_gui.handle_tab_changed(player, event.element) end
 end)
 
+script.on_event(defines.events.on_gui_elem_changed, function(event)
+    local unit_number, lane = string.match(event.element.name, "^otc_shape_config_item_(%d+)_(%a+)$")
+    if unit_number then
+        local player = game.get_player(event.player_index)
+        if player then
+            shape_config.handle_item_change(player, tonumber(unit_number), lane, event.element.elem_value)
+        end
+    end
+end)
+
 script.on_event(defines.events.on_gui_selection_state_changed, function(event)
     local player = game.get_player(event.player_index)
     if not player then return end
+    local config_unit = string.match(event.element.name, "^otc_shape_config_role_(%d+)$")
+    if config_unit then
+        shape_config.handle_role_change(player, tonumber(config_unit), event.element.selected_index)
+        return
+    end
     if event.element.name == "otc_trading_force_dropdown" then
         local element = event.element
         local force_name = element.items and element.items[element.selected_index]
@@ -518,6 +584,12 @@ end)
 script.on_event(defines.events.on_gui_checked_state_changed, function(event)
     local player = game.get_player(event.player_index)
     if not player then return end
+
+    if event.element.name == "otc_place_clear" then
+        shape_place.handle_clear_toggle(player, event.element.state)
+        return
+    end
+
     local player_data = storage.players and storage.players[player.index]
     if not player_data then return end
 

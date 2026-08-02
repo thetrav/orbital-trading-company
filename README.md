@@ -160,8 +160,62 @@ receive a context with the built entities grouped by role (`ctx.roles.gate`, `ct
 `skip_create = true` are described by the definition but built by the hook.
 
 Roles are inferred from entity names at capture time (see `ROLE_BY_NAME` in
-`scripts/shape_capture.lua`). Two things the capture cannot guess and you must fill in by hand:
-the `item` on a `role = "supply"` belt, and any new role you invent.
+`scripts/shape_capture.lua`). That lookup cannot tell a supply belt from any other transport
+belt, and it knows nothing about the `item` a supply belt carries. Tag those in game with the
+config tool.
+
+### Tagging roles with the config tool
+
+1. Run `/otc-config-shape` (admins only). This puts the **Shape Config Tool** in your cursor.
+2. **Left-drag** over the entities you want to tag. A window lists each one with a role dropdown
+   and an item picker.
+3. Pick a role. A supply belt also gets **two item pickers, one per transport lane**, captioned
+   with the screen side that lane occupies for that belt's facing — `top`/`bottom` for a
+   horizontal belt, `left`/`right` for a vertical one. Leaving a picker empty keeps that lane
+   clear, which is how you reserve it for an inserter to put things onto.
+4. Every tagged entity gets a green floating label: `intake`, or `supply iron-plate` when both
+   lanes carry the same thing, or `supply top=copper-plate` when only one lane is fed. That is
+   how you check the tagging in the world before capturing.
+5. **Right-drag** clears the tags under the selection.
+
+Capture afterwards as normal: a tagged role beats the `ROLE_BY_NAME` lookup, and both `role` and
+`item` land in the generated file, so nothing needs hand-editing.
+
+Supply and intake belts get their role automatically from their prototype — each exists for one
+purpose — so the only thing worth setting on them is a supply belt's per-lane items.
+
+A capture always writes those out per lane, as `item_left` / `item_right`, so a lane left clear
+for an inserter to fill is visible in the file rather than inferred. (`item = "iron-plate"` is
+still understood when read, and older shapes use it to mean both lanes.)
+`supply_belts.register_from_def` resolves all three fields, so a hook never reasons about lanes.
+
+Add a role to `shape_config.ROLES` to offer it in the dropdown — `shape_def` buckets whatever
+string it is given, so no other code has to change.
+
+Tags live in `storage`, not on the entity, so they survive a save but not a rebuild: mine and
+replace a tagged belt and you must tag it again. The tool is granted only by the command and is
+flagged `only-in-cursor`, so it cannot reach a regular player's inventory.
+
+### Placing a shape by hand
+
+Shapes that are not bought from a gate — fixed Nauvis builds — go down with the placer:
+
+1. Run `/otc-place-shape` (admins only). A list of every registered shape opens, with each
+   one's footprint size, and the first pick goes straight into your cursor.
+2. Click a shape in the list. Its placement item goes to your cursor and a blue footprint box
+   follows the mouse, so you can see exactly what you are about to cover.
+3. Left-click the map. The shape is built for the **Nauvis** force with its top-left corner at
+   the box you were shown, and its hook runs. The tool then leaves your cursor: one placement
+   per pick, so a stray second click cannot stack another copy on top. Click the shape in the
+   list again to place another.
+
+Build reach is lifted while the tool is in your cursor and restored the moment it leaves, so a
+20-tile room can be landed from wherever you happen to be standing.
+
+**Clear the area first** (on by default) destroys whatever is inside the footprint before
+building. Turn it off and overlapping entities simply fail to appear instead. Either way the
+game prints what was in the way. The footprint marker deliberately collides with nothing, so
+placement is never blocked — clobbering is the tool's job, not the collision system's.
 
 ### Regenerating the built-in shapes
 

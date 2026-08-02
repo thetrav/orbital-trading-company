@@ -54,3 +54,7 @@
 # Personal money
 
 * players have personal credits which they start with but also earn via their shares in a force.  have to work out how to give the force working capital, how to handle dividends and new share issues, maybe joining a force is a buy in rather than just a free join
+
+# Immersive Colony Builder
+
+* My daughter doesn't like industry, she likes farming.  She asked me to make it so she can grow things, so I'm thinking of integrating / copying some of the ideas from the immersive colony builder mod to create demand for housing, food, wood, consumer goods

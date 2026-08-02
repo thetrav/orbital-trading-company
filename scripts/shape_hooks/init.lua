@@ -10,6 +10,7 @@ M.hooks = {
     starting_room = require("scripts.shape_hooks.starting_room"),
     nauvis_production_room = require("scripts.shape_hooks.nauvis_production_room"),
     nauvis_mine_block = require("scripts.shape_hooks.nauvis_mine_block"),
+    stock_belts = require("scripts.shape_hooks.stock_belts"),
 }
 
 function M.run(name, ctx)

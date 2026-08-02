@@ -19,7 +19,7 @@ end
 
 local ENTITY_KEY_ORDER = {
     "name", "position", "direction", "role", "recipe", "belt_type",
-    "item", "force", "minable", "preview",
+    "item", "item_left", "item_right", "force", "minable", "preview",
 }
 
 local function entity_line(e, indent)

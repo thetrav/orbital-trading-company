@@ -17,6 +17,7 @@ M.defs = {
     nauvis_mine_iron = require("scripts.shapes.nauvis_mine_iron"),
     nauvis_mine_copper = require("scripts.shapes.nauvis_mine_copper"),
     nauvis_mine_coal = require("scripts.shapes.nauvis_mine_coal"),
+    red_flask_factory = require("scripts.shapes.red_flask_factory"),
 }
 
 function M.get(name)

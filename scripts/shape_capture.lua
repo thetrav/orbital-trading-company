@@ -1,5 +1,6 @@
 local shape_io = require("scripts.shape_io")
 local shape_def = require("scripts.shape_def")
+local shape_config = require("scripts.shape_config")
 
 local M = {}
 
@@ -36,6 +37,10 @@ local ROLE_BY_NAME = {
     ["otc-sell-chest"] = "sell_chest",
     ["otc-company-monitor"] = "company_monitor",
     ["lab"] = "lab",
+    -- These two prototypes exist for exactly one purpose each, so their role is
+    -- never worth configuring; only a supply belt's per-lane items are.
+    ["otc-supply-belt"] = "supply",
+    ["otc-intake-belt"] = "intake",
 }
 
 local SKIP_CREATE_ROLES = {
@@ -195,17 +200,31 @@ local function capture_entity(entity, origin)
     if entity.direction and entity.direction ~= 0 then
         e.direction = entity.direction
     end
-    local role = ROLE_BY_NAME[entity.name]
+    -- A role tagged in game with the config tool wins over the name lookup,
+    -- because the lookup cannot tell a supply belt from any other belt.
+    local tagged = shape_config.get(entity.unit_number)
+    local role = tagged and tagged.role or ROLE_BY_NAME[entity.name]
     if role then
         e.role = role
         if SKIP_CREATE_ROLES[role] then e.skip_create = true end
+    end
+    -- Always per lane, never the `item` shorthand: a capture has to say exactly
+    -- which lanes are fed, so that a lane deliberately left clear for an
+    -- inserter is visible in the file rather than inferred.
+    if tagged then
+        e.item_left = tagged.item_left
+        e.item_right = tagged.item_right
     end
     if entity.type == "assembling-machine" then
         local recipe = entity.get_recipe()
         if recipe then e.recipe = recipe.name end
     end
     if entity.type == "underground-belt" then
-        e.belt_type = entity.belt_to_ground_type
+        -- Normalised, not recorded: a supply belt is always an exit, so a
+        -- capture taken while one was rotated the wrong way still comes out
+        -- right.
+        e.belt_type = entity.name == "otc-supply-belt" and "output"
+            or entity.belt_to_ground_type
     end
     return e
 end
@@ -348,6 +367,10 @@ function M.register_commands()
         function(event)
             local player = game.get_player(event.player_index)
             if not player then return end
+            if not player.admin then
+                player.print("Only admins can use the shape authoring tools.")
+                return
+            end
 
             local name, tile_mode
             for word in (event.parameter or ""):gmatch("%S+") do

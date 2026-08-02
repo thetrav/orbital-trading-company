@@ -259,6 +259,9 @@ function M.create_entity(surface, e, force_name)
     }
     if e.direction then args.direction = e.direction end
     if e.belt_type then args.type = e.belt_type end
+    -- A supply belt hands items out; it is never an entrance, whatever an old
+    -- capture happens to say.
+    if e.name == "otc-supply-belt" then args.type = "output" end
     for key, value in pairs(e.create_args or {}) do
         args[key] = value
     end

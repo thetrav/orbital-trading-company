@@ -34,4 +34,26 @@ local tool = {
     },
 }
 
-return { marker, tool }
+local config_tool = {
+    type = "selection-tool",
+    name = "otc-shape-config",
+    icon = "__base__/graphics/icons/repair-pack.png",
+    icon_size = 64,
+    flags = { "only-in-cursor", "spawnable", "not-stackable" },
+    subgroup = "tool",
+    order = "z[otc]-b[shape-config]",
+    stack_size = 1,
+    draw_label_for_cursor_render = true,
+    select = {
+        border_color = { r = 0.35, g = 0.6, b = 1 },
+        cursor_box_type = "entity",
+        mode = { "any-entity" },
+    },
+    alt_select = {
+        border_color = { r = 0.9, g = 0.3, b = 0.3 },
+        cursor_box_type = "not-allowed",
+        mode = { "any-entity" },
+    },
+}
+
+return { marker, tool, config_tool }
