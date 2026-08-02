@@ -17,6 +17,9 @@ local trading_history = require("scripts.trading_history")
 local trading_gui = require("scripts.trading_gui")
 local stock = require("scripts.stock")
 local nauvis_industry = require("scripts.nauvis_industry")
+local nauvis_expansion = require("scripts.nauvis_expansion")
+local company_facilities = require("scripts.company_facilities")
+local district = require("scripts.district")
 local research = require("scripts.research")
 local supply_belts = require("scripts.supply_belts")
 
@@ -25,13 +28,27 @@ local SELL_CHEST_NAME = "otc-sell-chest"
 local NAUVIS_FORCE = "Nauvis"
 local STARTING_PERSONAL_CREDITS = 10000
 
-local function clear_enemies()
-    local nauvis_surface = game.surfaces["nauvis"]
-    if nauvis_surface then
-        for _, entity in ipairs(nauvis_surface.find_entities_filtered{force = "enemy"}) do
-            if entity.valid then entity.destroy() end
-        end
+-- Nauvis generates as a normal world now, so nests come with it. Autoplace is
+-- turned down in data-final-fixes, peaceful mode stops anything that survives
+-- from hunting, and on_chunk_generated sweeps newly revealed ground -- players
+-- are free to walk out and explore, and there must be nothing out there to
+-- meet them.
+local function clear_enemies(surface, area)
+    surface = surface or game.surfaces["nauvis"]
+    if not surface then return end
+    local filter = { force = "enemy" }
+    if area then filter.area = area end
+    for _, entity in ipairs(surface.find_entities_filtered(filter)) do
+        if entity.valid then entity.destroy() end
     end
+end
+
+local function make_peaceful()
+    local surface = game.surfaces["nauvis"]
+    if surface then surface.peaceful_mode = true end
+    game.map_settings.pollution.enabled = false
+    game.map_settings.enemy_expansion.enabled = false
+    game.map_settings.enemy_evolution.enabled = false
 end
 
 local function build_starting_room(surface)
@@ -58,6 +75,9 @@ local function ensure_company_setup()
 
     stock.init()
     research.init()
+    district.init()
+    company_facilities.init()
+    nauvis_expansion.init()
 
     local nauvis_is_new = storage.nauvis == nil
     nauvis.init()
@@ -178,8 +198,7 @@ script.on_init(function()
     ensure_company_setup()
 
     clear_enemies()
-    game.map_settings.pollution.enabled = false
-    game.map_settings.enemy_expansion.enabled = false
+    make_peaceful()
 
     local nauvis_surface = game.surfaces["nauvis"]
     if nauvis_surface then
@@ -214,6 +233,16 @@ end)
 script.on_event(defines.events.on_player_alt_selected_area, function(event)
     shape_capture.on_selected_area(event, true)
     shape_config.on_selected_area(event, true)
+end)
+
+-- Right-drag. Only the capture tool defines a reverse selection, and it means
+-- the same thing there as shift+left-drag: entities, no tiles.
+script.on_event(defines.events.on_player_reverse_selected_area, function(event)
+    shape_capture.on_selected_area(event, true)
+end)
+
+script.on_event(defines.events.on_player_alt_reverse_selected_area, function(event)
+    shape_capture.on_selected_area(event, true)
 end)
 
 script.on_event(defines.events.on_player_created, function(event)
@@ -294,9 +323,17 @@ script.on_nth_tick(60, function()
     trading_history.advance_second()
     trading_gui.refresh()
     research.start_pending_research()
+    nauvis_expansion.process()
+end)
+
+script.on_event(defines.events.on_chunk_generated, function(event)
+    if event.surface.name ~= "nauvis" then return end
+    clear_enemies(event.surface, event.area)
 end)
 
 script.on_configuration_changed(function()
+    clear_enemies()
+    make_peaceful()
     shape_capture.init()
     shape_config.init()
     shape_place.init()

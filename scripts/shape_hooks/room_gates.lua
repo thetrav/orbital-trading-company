@@ -17,10 +17,13 @@ function M.run(ctx)
     for _, entry in ipairs(ctx.roles.gate or {}) do
         local gx, gy = tile_of(entry.def.position)
         local side = entry.def.side
-        local gate = room_builder.place_gate(ctx.surface, side, { gx, gy }, ctx.force_name)
+        local gate = room_builder.place_gate(ctx.surface, side, { gx, gy }, ctx.force_name, ctx.owned_by_force)
         local computer
-        if computers[side] then
-            computer = room_builder.place_computer(ctx.surface, gx, gy, side, ctx.force_name)
+        -- Nauvis has no expansion shop any more -- companies are given their
+        -- ground facilities and expand in space -- so a gate down here is
+        -- decoration and gets no computer to open.
+        if computers[side] and not room_builder.is_nauvis(ctx.surface) then
+            computer = room_builder.place_computer(ctx.surface, gx, gy, side, ctx.force_name, ctx.owned_by_force)
         end
         room_builder.register_gate(gx, gy, side, gate, computer, ctx.surface.name)
         entry.entity = gate

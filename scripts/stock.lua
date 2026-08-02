@@ -15,6 +15,9 @@ end
 
 -- Nauvis owns nothing it has not mined, made or been sold: an item with no entry
 -- is genuinely absent, and reading it must not conjure a starting stockpile.
+-- `TARGET_STOCK` is what Nauvis *wants* to hold, not what it begins with, so a
+-- new game starts with every price at the scarcity cap and nothing purchasable
+-- at all; the mine blocks are the only thing that breaks that deadlock.
 function M.get(item_name)
     if not storage.stock then return 0 end
     return storage.stock.items[item_name] or 0

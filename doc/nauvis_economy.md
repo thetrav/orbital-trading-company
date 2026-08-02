@@ -75,14 +75,17 @@ At `stock <= 0` a buy chest receives **nothing** — no partial fill, no emergen
 This is the point of the whole change: the economy is fixed, not infinite, and an item
 nobody produces stops being purchasable until somebody produces it.
 
-There is **no starting seed at all**: the warehouse begins empty and an item with no entry
-reads as zero. Nauvis owns only what it has mined, made, or been sold, so every price starts
-pinned at the 20× ceiling and every shelf is stocked by somebody. That is what makes
-smelting — and supplying Nauvis generally — the obvious first business rather than an
-optional one.
+There is **no starting seed at all.** `TARGET_STOCK` is what Nauvis *wants* to hold, not what
+it starts with: the warehouse begins empty, an item with no entry reads as zero, and Nauvis
+owns only what it has mined, made, or been sold.
 
-Consequence worth naming: with no starting plate stock and no furnaces, Nauvis's own
-assemblers sit idle at game start too — the production room genuinely waits on players.
+That makes the opening of the game a real cold start — every price pinned at the 20× ceiling
+and nothing purchasable at all — and the mine blocks are the only thing that breaks it: ore
+reaches stock within seconds of the first tick, which is the one commodity players can buy.
+Smelting it and selling plates back is therefore not the obvious first business, it is the
+*only* one — and until somebody does it, Nauvis's own assemblers sit idle and nothing in the
+game researches.
+
 Ore stock climbs forever from mining while plate stock is entirely player-driven: it rises
 only when someone sells plates, and falls both from purchases and from Nauvis's own
 science production. Ore prices sink toward the floor; plate prices start high and settle
@@ -302,3 +305,69 @@ consumes nothing and plate prices never move on their own.
   fix the research rate permanently. Nauvis expanding its own factory as stock allows is the
   natural sequel and is what `design-thinking.md` gestures at with "a very dumb AI player
   for nauvis". Out of scope here.
+
+---
+
+## 7. Expansion by vote
+
+Nauvis is a producer with no ambition: the production room and the mine row are fixed, so
+its output is a constant and every price eventually settles around it. The ballot is what
+makes Nauvis grow, and it puts that growth in the players' hands without letting them
+free-build on the state's surface.
+
+### The mechanism
+
+On the Nauvis tab, below Research, a row of options with a running vote tally. A player
+votes the **shares they hold** — governance follows ownership, the same rule the share
+market already runs on, and a player with no company has no vote. The highest tally is the
+target; ties break towards the earlier option so the result never depends on table order.
+
+The target's bill of materials is **derived from the shape**: every entity in the captured
+definition, costed at its `items_to_place_this`. Nothing is hand-tuned, so recapturing a
+shape retunes its price. A solar field is 32 solar panels, 8 accumulators and a substation
+because that is literally what it is made of.
+
+Nauvis funds it out of **surplus only** — stock above `TARGET_STOCK`. This is the piece
+that makes the feature an economic mechanic rather than a menu:
+
+- Above target the scarcity multiple is `(T/s)^2`, so flooding Nauvis with a good has
+  always been a way to destroy its price. Now it is also the only way to fund a build.
+- Nauvis never competes with players for its own warehouse, so a vote a minority cast
+  cannot drain the market everyone else is trading in.
+- The bill names *which* goods, so a vote is a public instruction about what to overproduce.
+  Voting a science factory tells everyone to dump belts and inserters.
+
+Goods drawn are held in `progress` until the build. Switching the vote refunds only what the
+new target does not need, so changing your mind costs the market the delay and nothing else.
+
+### Where it lands
+
+Not a player decision. `scripts/district.lua` owns one grid of 32-tile slots centred on the
+player compound, claimed in **rings** that only cover the half-plane north of spawn — so the
+district grows as a rectangle extending east, north and west, with the compound in the middle
+of its bottom edge. Nauvis's own fixtures (production room, three mine blocks) take named
+ring-1 slots; voted expansions and newly founded companies' facilities take the next free one.
+One allocator, one geography.
+
+Each slot lays a `refined-concrete` pad — which also fills water, so a slot can land in a lake
+and survive — and places a substation at each of its eight border points. Neighbours share
+those borders, so the lattice stays continuous however the rectangle grows. See AGENTS.md
+"one grid holds everything" for why 32 and 16 are the numbers.
+
+The shared grid is the interesting consequence: mine blocks and solar fields carry their own
+power, the science factory carries none. Vote a factory before a solar field and it lands,
+correctly wired, and sits idle until the district has generation to spare. Nobody has to
+explain that; the alt-mode icon does.
+
+### Open questions
+
+- **A whale decides everything.** Vote weight is share count, and one founder with a large
+  company outweighs a room of small ones. That is the intended reading of "governance follows
+  ownership", but it means the ballot may not feel like a vote in practice. The lever if it
+  bites is weighting by `sqrt(shares)`, or one vote per company rather than per player.
+- **The ballot is static.** Five options forever. It should probably gate on research —
+  no science factory before automation, no solar field before solar energy — and grow as
+  new shapes are captured.
+- **Nothing decays.** Slots are claimed forever and the district marches west without limit.
+  Fine for now; a wave-defence Nauvis (see `design-thinking.md` § Nauvis) would want
+  expansions that can be lost.

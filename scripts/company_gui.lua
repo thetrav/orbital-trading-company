@@ -5,6 +5,7 @@ local nauvis = require("scripts.nauvis")
 local utils = require("scripts.utils")
 local item_filter = require("scripts.item_filter")
 local research = require("scripts.research")
+local nauvis_expansion = require("scripts.nauvis_expansion")
 local stock = require("scripts.stock")
 
 local M = {}
@@ -326,6 +327,162 @@ local function add_stock_row(stock_list, item, index)
     return row
 end
 
+local function item_caption(item_name)
+    local prototype = prototypes.item[item_name]
+    return prototype and prototype.localised_name or item_name
+end
+
+local function expansion_status_caption()
+    local target = nauvis_expansion.target()
+    local option = target and nauvis_expansion.get_option(target)
+    if not option then
+        return "Nothing under construction -- the winning vote below becomes the next build."
+    end
+    local have, need = 0, 0
+    for _, row in ipairs(nauvis_expansion.remaining(target)) do
+        have, need = have + row.have, need + row.need
+    end
+    return { "", "Building: ", option.label, string.format("  (%d/%d goods delivered)", have, need) }
+end
+
+local function bill_row_caption(row)
+    return { "", item_caption(row.name), string.format(": %d / %d", row.have, row.need) }
+end
+
+local function tally_caption(option, counts)
+    local built = nauvis_expansion.built_count(option.key)
+    local suffix = built > 0 and string.format("   [%d built]", built) or ""
+    return { "", option.label, string.format(": %d votes", counts[option.key] or 0), suffix }
+end
+
+local function your_vote_caption(player)
+    local weight = nauvis_expansion.vote_weight(player.index)
+    if weight <= 0 then
+        return "You hold no shares, so you have no vote."
+    end
+    local vote = nauvis_expansion.get_vote(player.index)
+    local option = vote and nauvis_expansion.get_option(vote)
+    return string.format("Your vote: %s (%d shares)", option and option.label or "none", weight)
+end
+
+--- The ballot's own selection, kept per player so the periodic refresh never
+--- moves a dropdown out from under someone mid-click. Option captions are
+--- static, so unlike the research dropdown the item list is written once.
+local function expansion_selected_key(player)
+    local frame = player.gui.screen.otc_company_frame
+    local tabs = frame and frame.otc_company_tabs
+    local content = tabs and tabs.otc_company_content_nauvis
+    local row = content and content.otc_company_nauvis_expansion_row
+    local dropdown = row and row.otc_company_nauvis_expansion
+    if not dropdown or dropdown.selected_index == 0 then return nil end
+    local option = nauvis_expansion.OPTIONS[dropdown.selected_index]
+    return option and option.key or nil
+end
+
+local function build_expansion_section(player, content)
+    content.add { type = "line" }
+    content.add { type = "label", caption = "Expansion", style = "bold_label" }
+    content.add {
+        type = "label",
+        name = "otc_company_nauvis_expansion_status",
+        caption = expansion_status_caption(),
+        style = "caption_label",
+    }
+
+    local bill = content.add {
+        type = "flow", name = "otc_company_nauvis_expansion_bill", direction = "vertical",
+    }
+    local target = nauvis_expansion.target()
+    if target then
+        for _, row in ipairs(nauvis_expansion.remaining(target)) do
+            local line = bill.add {
+                type = "flow", name = "otc_company_nauvis_bill_row_" .. row.name, direction = "horizontal",
+            }
+            line.style.vertical_align = "center"
+            line.add { type = "sprite", sprite = "item/" .. row.name }
+            line.add { type = "label", name = "otc_company_nauvis_bill_" .. row.name, caption = bill_row_caption(row) }
+        end
+        bill.add {
+            type = "label",
+            caption = "Nauvis only spends warehouse surplus above " .. utils.format_number(stock.TARGET_STOCK)
+                .. ", so sell it more than it wants to keep.",
+        }
+    end
+
+    local vote_row = content.add {
+        type = "flow", name = "otc_company_nauvis_expansion_row", direction = "horizontal",
+    }
+    vote_row.style.vertical_align = "center"
+    vote_row.add { type = "label", caption = "Vote:" }
+    local items, selected_index = {}, 0
+    local current_vote = nauvis_expansion.get_vote(player.index)
+    for i, option in ipairs(nauvis_expansion.OPTIONS) do
+        items[i] = option.label
+        if option.key == current_vote then selected_index = i end
+    end
+    local dropdown = vote_row.add {
+        type = "drop-down",
+        name = "otc_company_nauvis_expansion",
+        items = items,
+        selected_index = selected_index,
+    }
+    dropdown.style.horizontally_stretchable = true
+    vote_row.add {
+        type = "button",
+        name = "otc_company_nauvis_vote",
+        caption = "Vote",
+        style = "green_button",
+    }
+
+    content.add {
+        type = "label",
+        name = "otc_company_nauvis_expansion_yours",
+        caption = your_vote_caption(player),
+        style = "caption_label",
+    }
+
+    local counts = nauvis_expansion.tally()
+    local tally = content.add {
+        type = "flow", name = "otc_company_nauvis_expansion_tally", direction = "vertical",
+    }
+    for _, option in ipairs(nauvis_expansion.OPTIONS) do
+        local label = tally.add {
+            type = "label",
+            name = "otc_company_nauvis_tally_" .. option.key,
+            caption = tally_caption(option, counts),
+        }
+        label.tooltip = option.tooltip
+    end
+end
+
+local function refresh_expansion_section(player, content)
+    local status = content.otc_company_nauvis_expansion_status
+    if not status or not status.valid then return end
+    status.caption = expansion_status_caption()
+
+    local bill = content.otc_company_nauvis_expansion_bill
+    local target = nauvis_expansion.target()
+    if bill and bill.valid and target then
+        for _, row in ipairs(nauvis_expansion.remaining(target)) do
+            local line = bill["otc_company_nauvis_bill_row_" .. row.name]
+            local label = line and line["otc_company_nauvis_bill_" .. row.name]
+            if label and label.valid then label.caption = bill_row_caption(row) end
+        end
+    end
+
+    local yours = content.otc_company_nauvis_expansion_yours
+    if yours and yours.valid then yours.caption = your_vote_caption(player) end
+
+    local tally = content.otc_company_nauvis_expansion_tally
+    if tally and tally.valid then
+        local counts = nauvis_expansion.tally()
+        for _, option in ipairs(nauvis_expansion.OPTIONS) do
+            local label = tally["otc_company_nauvis_tally_" .. option.key]
+            if label and label.valid then label.caption = tally_caption(option, counts) end
+        end
+    end
+end
+
 local function rebuild_nauvis_tab(player, content)
     for _, child in ipairs(content.children) do child.destroy() end
 
@@ -380,6 +537,11 @@ local function rebuild_nauvis_tab(player, content)
         caption = "Apply",
         style = "green_button",
     }
+
+    build_expansion_section(player, content)
+    -- The bill of materials is per target, so the periodic refresh has to know
+    -- when to rebuild rows rather than just rewrite captions.
+    player_data.nauvis_expansion_shown = nauvis_expansion.target()
 
     content.add { type = "line" }
     content.add { type = "label", caption = "Warehouse stock", style = "bold_label" }
@@ -466,6 +628,12 @@ function M.refresh_nauvis_stock(player)
     if dropdown and dropdown.valid and player_data then
         populate_research_dropdown(dropdown, player_data)
     end
+
+    if player_data and player_data.nauvis_expansion_shown ~= nauvis_expansion.target() then
+        rebuild_nauvis_tab(player, content)
+        return
+    end
+    refresh_expansion_section(player, content)
 
     local stock_frame = content.otc_company_nauvis_stock_frame
     local stock_list = stock_frame and stock_frame.otc_company_nauvis_stock_list
@@ -631,6 +799,7 @@ function M.handle_create(player)
 
     market_gui.init_player(player)
     expand_gui.init_player(player)
+    nauvis_expansion.chart_force(player.force)
     select_tab(player, "company")
     M.rebuild_all(player)
 end
@@ -705,6 +874,25 @@ function M.handle_apply_research(player)
     M.refresh_nauvis_stock(player)
 end
 
+function M.handle_vote(player)
+    local key = expansion_selected_key(player)
+    local option = key and nauvis_expansion.get_option(key)
+    if not option then
+        player.print("Pick an expansion to vote for first.")
+        return
+    end
+
+    local ok, err = nauvis_expansion.set_vote(player.index, key)
+    if not ok then
+        player.print(err)
+        return
+    end
+
+    player.print("Voted " .. nauvis_expansion.vote_weight(player.index)
+        .. " shares for " .. option.label .. ".")
+    M.refresh_nauvis_tab(player)
+end
+
 function M.handle_research_selection(player, element)
     local player_data = storage.players and storage.players[player.index]
     if not player_data then return end
@@ -720,6 +908,10 @@ function M.handle_click(player, element_name)
     end
     if element_name == "otc_company_nauvis_apply_research" then
         M.handle_apply_research(player)
+        return
+    end
+    if element_name == "otc_company_nauvis_vote" then
+        M.handle_vote(player)
         return
     end
     if element_name == "otc_company_create" then

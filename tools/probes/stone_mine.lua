@@ -1,9 +1,24 @@
 -- Does the auto-built stone mine bind its drills to stone, draw power off the
--- coal block's grid, and land stone in Nauvis's stock?
+-- district grid, and land stone in Nauvis's stock?
+--
+-- It brings no generation of its own. It used to sit at fixed coordinates next
+-- to the coal block and share its poles; now it takes a district slot, and what
+-- powers it is the substation lattice. Both slots are ring 1, so the areas below
+-- are the two slot pads rather than hand-measured boxes.
+local district = require("scripts.district")
+
 local M = {}
 
-local AREA = { left_top = { x = -78, y = -8 }, right_bottom = { x = -64, y = 8 } }
-local COAL_AREA = { left_top = { x = -95, y = -8 }, right_bottom = { x = -79, y = 16 } }
+local function slot_area(col, row)
+    local box = district.pad_box(district.centre(col, row))
+    return {
+        left_top = { x = box[1][1], y = box[1][2] },
+        right_bottom = { x = box[2][1], y = box[2][2] },
+    }
+end
+
+local AREA = slot_area(1, 0)
+local COAL_AREA = slot_area(-1, 0)
 
 local function status_name(status)
     for name, value in pairs(defines.entity_status) do

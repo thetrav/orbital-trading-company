@@ -7,8 +7,12 @@ function M.is_nauvis(surface)
 end
 
 --- Everything otc places on Nauvis belongs to the Nauvis force, except the
---- teleporter, which has to belong to the company using it.
-function M.get_surface_force(surface, force_name, entity_type)
+--- teleporter, which has to belong to the company using it. `owned` is the
+--- opt-out a company's own ground facilities take: the whole shape belongs to
+--- the company, and it has to be the *whole* shape, because a gate only joins
+--- up with walls on its own force.
+function M.get_surface_force(surface, force_name, entity_type, owned)
+    if owned then return force_name or "player" end
     if M.is_nauvis(surface) then
         if entity_type == "teleporter" then
             return force_name or "player"
@@ -30,8 +34,8 @@ function M.side_is_vertical(side)
     return side == "east" or side == "west"
 end
 
-function M.place_wall(surface, pos, force_name)
-    force_name = M.get_surface_force(surface, force_name, "wall")
+function M.place_wall(surface, pos, force_name, owned)
+    force_name = M.get_surface_force(surface, force_name, "wall", owned)
     if platform_gates.is_entity_position(pos[1], pos[2]) then return end
     local existing = surface.find_entity("otc-platform-wall", pos)
     if existing then return existing end
@@ -42,8 +46,8 @@ function M.place_wall(surface, pos, force_name)
     })
 end
 
-function M.place_gate(surface, side, pos, force_name)
-    force_name = M.get_surface_force(surface, force_name, "gate") or "nauvis"
+function M.place_gate(surface, side, pos, force_name, owned)
+    force_name = M.get_surface_force(surface, force_name, "gate", owned) or "nauvis"
     return M.fix(surface.create_entity {
         name = "gate",
         position = pos,
@@ -55,8 +59,8 @@ end
 
 --- Gate computers merge with an adjacent one rather than stacking up, so a
 --- newly built room does not leave a stale computer behind on the shared wall.
-function M.place_computer(surface, gx, gy, side, force_name)
-    force_name = M.get_surface_force(surface, force_name, "computer") or "nauvis"
+function M.place_computer(surface, gx, gy, side, force_name, owned)
+    force_name = M.get_surface_force(surface, force_name, "computer", owned) or "nauvis"
     local cdx = (side == "east" and 1) or (side == "west" and -1) or 0
     local cdy = (side == "north" and 1) or (side == "south" and -1) or 0
     local pos = { gx + cdx, gy + cdy }

@@ -1,16 +1,25 @@
 local supply_belts = require("scripts.supply_belts")
 local nauvis = require("scripts.nauvis")
-local platform = require("scripts.platform")
+local district = require("scripts.district")
 
 local M = {}
 
--- Geometry lives in the captured shape definitions; see README.md
--- "Capturing shapes" to change any of this from inside the game.
-local MINE_BLOCKS = {
-    { shape = "nauvis_mine_iron", x = -120, y = -4 },
-    { shape = "nauvis_mine_copper", x = -105, y = -4 },
-    { shape = "nauvis_mine_coal", x = -90, y = -4 },
-    { shape = "stone_mine", x = -75, y = -4 },
+-- What Nauvis starts the game owning, placed in named slots of the expansion
+-- district rather than at hand-picked coordinates -- the fixtures and the
+-- voted expansions share one geography. These fill ring 1 exactly, the
+-- rectangle immediately around spawn: the production room takes the slot due
+-- north so players can watch it work, the four mine blocks take the rest, and
+-- everything anyone builds afterwards grows outward from there.
+--
+-- `stone_mine` brings no generation of its own -- it used to sit next to the
+-- coal block and draw off its grid. The district's substation lattice is one
+-- network, so it is still powered wherever its slot lands.
+local FIXTURES = {
+    { shape = "nauvis_production_room", col = 0, row = -1 },
+    { shape = "nauvis_mine_iron", col = -1, row = -1 },
+    { shape = "nauvis_mine_copper", col = 1, row = -1 },
+    { shape = "nauvis_mine_coal", col = -1, row = 0 },
+    { shape = "stone_mine", col = 1, row = 0 },
 }
 
 local function place(surface, name, position, direction, extra)
@@ -36,13 +45,10 @@ local function tile_center(x, y)
     return { x + 0.5, y + 0.5 }
 end
 
-local function build_production_room(surface)
-    platform.build_shape(surface, "nauvis_production_room", { x = 0, y = 0 }, nauvis.FORCE_NAME)
-end
-
-local function build_mine(surface)
-    for _, block in ipairs(MINE_BLOCKS) do
-        platform.build_shape(surface, block.shape, { x = block.x, y = block.y }, nauvis.FORCE_NAME)
+local function build_fixtures(surface)
+    for _, fixture in ipairs(FIXTURES) do
+        district.build(surface, fixture.shape,
+            district.claim_at(fixture.col, fixture.row), nauvis.FORCE_NAME)
     end
 end
 
@@ -70,9 +76,9 @@ local function seal_top_airlock(surface)
 end
 
 local function chart(surface)
-    local area = { { -130, -30 }, { 20, 10 } }
     for _, force in pairs(game.forces) do
-        force.chart(surface, area)
+        force.chart(surface, { { -40, -40 }, { 40, 12 } })
+        district.chart_all(surface, force)
     end
 end
 
@@ -82,6 +88,7 @@ end
 
 function M.ensure_built()
     M.init()
+    district.init()
     supply_belts.init()
     local surface = game.surfaces["nauvis"]
     if not surface then return end
@@ -91,8 +98,7 @@ function M.ensure_built()
     end
 
     seal_top_airlock(surface)
-    build_production_room(surface)
-    build_mine(surface)
+    build_fixtures(surface)
     chart(surface)
 
     storage.nauvis_industry.built = true

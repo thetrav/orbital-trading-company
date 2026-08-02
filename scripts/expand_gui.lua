@@ -4,13 +4,24 @@ local nauvis = require("scripts.nauvis")
 
 local M = {}
 
-local HUB_COST = 1
-local CORRIDOR_COST = 2
-local FACTORY_COST = 4
-local IRON_ASTEROID_COST = 6
-local COPPER_ASTEROID_COST = 6
-local ORBITAL_STATION_COST = 1
-local WATER_CONNECTION_COST = 2
+-- What a station can buy off one of its own gates, in the order it is listed.
+-- Asteroids are deliberately absent: all mining happens on Nauvis now, so
+-- selling a company its own ore patch would undercut the market the whole game
+-- runs on. The shapes are still captured and registered, so putting them back
+-- is one row here.
+local SHOP = {
+    { shape = "hub", label = "Hub", sprite = "item/gate", cost = 1 },
+    { shape = "corridor", label = "Corridor", sprite = "item/transport-belt", cost = 2 },
+    { shape = "factory", label = "Factory", sprite = "item/assembling-machine-2", cost = 4 },
+    { shape = "water_connection", label = "Water Connection", sprite = "item/offshore-pump", cost = 2 },
+}
+
+local function cost_of(shape)
+    for _, listing in ipairs(SHOP) do
+        if listing.shape == shape then return listing.cost end
+    end
+    return nil
+end
 
 function M.create_expand_gui(player)
     if player.gui.screen.otc_expand_frame then
@@ -126,7 +137,7 @@ function M.rebuild(player)
     player_data.selected_shape = nil
     M.clear_preview(player_data)
 
-    local function add_listing(sprite_tag, label, cost, shape_name)
+    local function add_listing(listing)
         local row = list.add {
             type = "flow",
             direction = "horizontal",
@@ -136,14 +147,14 @@ function M.rebuild(player)
 
         row.add {
             type = "sprite",
-            sprite = sprite_tag,
+            sprite = listing.sprite,
             ignored_by_interaction = true,
         }
 
         local btn = row.add {
             type = "button",
-            name = "otc_shape_" .. shape_name,
-            caption = label,
+            name = "otc_shape_" .. listing.shape,
+            caption = listing.label,
             style = "list_box_item",
             mouse_button_filter = {"left"},
         }
@@ -151,24 +162,22 @@ function M.rebuild(player)
 
         local cost_label = row.add {
             type = "label",
-            caption = "₾" .. cost,
+            caption = "₾" .. listing.cost,
             ignored_by_interaction = true,
         }
         cost_label.style.minimal_width = 35
         cost_label.style.horizontal_align = "right"
     end
 
-    local is_nauvis = gate_state.surface_name == "nauvis"
+    -- Nauvis sells nothing: a company is given its launch bay when it is
+    -- founded, and everything it chooses is bought in space.
+    if gate_state.surface_name == "nauvis" then
+        list.add { type = "label", caption = "Nothing to build here. Expand from your orbital station." }
+        return
+    end
 
-    add_listing("item/gate", "Hub", HUB_COST, "hub")
-    if is_nauvis then
-        add_listing("item/rocket-silo", "Orbital station", ORBITAL_STATION_COST, "orbital_station")
-    else
-        add_listing("item/transport-belt", "Corridor", CORRIDOR_COST, "corridor")
-        add_listing("item/assembling-machine-2", "Factory", FACTORY_COST, "factory")
-        add_listing("item/iron-ore", "Iron Asteroid", IRON_ASTEROID_COST, "iron_asteroid")
-        add_listing("item/copper-ore", "Copper Asteroid", COPPER_ASTEROID_COST, "copper_asteroid")
-        add_listing("item/offshore-pump", "Water Connection", WATER_CONNECTION_COST, "water_connection")
+    for _, listing in ipairs(SHOP) do
+        add_listing(listing)
     end
 
     local buy_button = frame.otc_expand_buy_row.otc_expand_buy_button
@@ -236,14 +245,8 @@ function M.handle_selection_change(player, shape)
     player_data.preview_renderings = platform.show_preview(surface, player, gate_state.pos, shape)
 
     local buy_btn = get_buy_button(frame)
-    if buy_btn then
-        local cost = shape == "hub" and HUB_COST
-            or shape == "corridor" and CORRIDOR_COST
-            or shape == "factory" and FACTORY_COST
-            or shape == "orbital_station" and ORBITAL_STATION_COST
-            or shape == "water_connection" and WATER_CONNECTION_COST
-            or shape == "iron_asteroid" and IRON_ASTEROID_COST
-            or COPPER_ASTEROID_COST
+    local cost = cost_of(shape)
+    if buy_btn and cost then
         buy_btn.enabled = true
         buy_btn.caption = "Buy (₾" .. utils.format_number(cost) .. ")"
     end
@@ -304,27 +307,17 @@ function M.handle_buy_expansion(player)
         return
     end
 
-    if shape == "orbital_station" then
-        local company_force = player.force.name
-        if storage.station_forces then
-            for _, force in pairs(storage.station_forces) do
-                if force == company_force then
-                    player.print("Your company already has an orbital station!")
-                    return
-                end
-            end
-        end
+    -- Fails closed: a shape that is not on the shop list has no price, so a
+    -- stale selection cannot be bought at whatever the last branch happened to
+    -- return.
+    local cost = cost_of(shape)
+    if not cost then
+        player.print("That is not for sale here.")
+        return
     end
 
     local company = storage.companies and storage.companies[player_data.company]
     local credits = company and company.credits or 0
-    local cost = shape == "hub" and HUB_COST
-        or shape == "corridor" and CORRIDOR_COST
-        or shape == "factory" and FACTORY_COST
-        or shape == "orbital_station" and ORBITAL_STATION_COST
-        or shape == "water_connection" and WATER_CONNECTION_COST
-        or shape == "iron_asteroid" and IRON_ASTEROID_COST
-        or COPPER_ASTEROID_COST
     if cost > 0 and credits < cost then
         player.print("Not enough credits!")
         return

@@ -1,5 +1,6 @@
 local nauvis = require("scripts.nauvis")
 local research = require("scripts.research")
+local company_facilities = require("scripts.company_facilities")
 
 local M = {}
 
@@ -154,6 +155,10 @@ function M.create(player, name, capital)
     player_data.personal_credits = player_data.personal_credits - capital
     player_data.company = name
     player.force = game.forces[name]
+
+    -- A founded company has somewhere to stand and a way off the planet from
+    -- its first second; neither was ever a real choice.
+    company_facilities.ensure_for(name)
 
     ledger_add(storage.companies[name], "found", capital, player.index)
     return true

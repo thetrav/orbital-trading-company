@@ -46,22 +46,52 @@ local function full_box(def, origin, steps, gate_pos, dir)
     return box
 end
 
+-- Nauvis is a real world now, so a slot can land on a forest, a boulder or a
+-- cliff. Nauvis clears whatever is in the way -- these are the things a shape
+-- is always allowed to remove, as opposed to `clear_area`, which removes
+-- everything and is still opt-in per shape.
+local SCENERY_TYPES = {
+    tree = true,
+    ["simple-entity"] = true,
+    cliff = true,
+    fish = true,
+}
+
+local function clear_scenery(surface, box)
+    if not box then return end
+    local area = { { box[1][1] - 1, box[1][2] - 1 }, { box[2][1] + 2, box[2][2] + 2 } }
+    for _, entity in ipairs(surface.find_entities_filtered { area = area }) do
+        if entity.valid and SCENERY_TYPES[entity.type] then entity.destroy() end
+    end
+end
+
 --- Build a shape definition into the world and run its hook.
 --- `extra` is merged into the hook context so callers can pass things a
 --- definition cannot carry (a station name, a return teleport target).
 function M.place_shape(surface, def, origin, steps, force_name, opts)
     opts = opts or {}
 
+    clear_scenery(surface, shape_def.clearance_box(def, origin, steps))
+
+    -- Nauvis normally owns everything on its own surface. A company's own
+    -- facilities are the exception: they stand on Nauvis but the company has to
+    -- be able to use them, so the caller can opt out of the override.
+    local resolver = opts.owned_by_force
+        and function() return force_name end
+        or function(entity)
+            return room_builder.get_surface_force(surface, force_name, entity.role)
+        end
+
     local ctx = shape_def.apply(surface, def, origin, steps, {
         force_name = force_name,
         extra_tile_layers = opts.extra_tile_layers,
-        force_resolver = function(entity)
-            return room_builder.get_surface_force(surface, force_name, entity.role)
-        end,
+        force_resolver = resolver,
     })
 
+    ctx.owned_by_force = opts.owned_by_force
+
     for _, wall in ipairs(opts.extra_walls or {}) do
-        room_builder.place_wall(surface, wall, force_name)
+        room_builder.place_wall(surface, wall, force_name, opts.owned_by_force)
     end
 
     for key, value in pairs(opts.context or {}) do

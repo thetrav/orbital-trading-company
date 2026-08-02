@@ -27,7 +27,19 @@ local tool = {
         cursor_box_type = "copy",
         mode = { "any-entity", "any-tile" },
     },
+    -- Entities only, on both of the bindings a player is likely to reach for:
+    -- alt_select is shift+left-drag, reverse_select is right-drag.
     alt_select = {
+        border_color = { r = 0.9, g = 0.6, b = 0.2 },
+        cursor_box_type = "copy",
+        mode = { "any-entity" },
+    },
+    reverse_select = {
+        border_color = { r = 0.9, g = 0.6, b = 0.2 },
+        cursor_box_type = "copy",
+        mode = { "any-entity" },
+    },
+    alt_reverse_select = {
         border_color = { r = 0.9, g = 0.6, b = 0.2 },
         cursor_box_type = "copy",
         mode = { "any-entity" },

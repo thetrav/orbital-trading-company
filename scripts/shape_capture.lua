@@ -394,7 +394,7 @@ function M.register_commands()
             M.give_tool(player, name, tile_mode)
             player.print("Ready to capture \"" .. name .. "\" (tiles=" .. (tile_mode or "all")
                 .. "). Drag the capture tool over the shape: left-drag captures tiles and entities, "
-                .. "right-drag captures entities only.")
+                .. "right-drag or shift+left-drag captures entities only.")
         end)
 end
 

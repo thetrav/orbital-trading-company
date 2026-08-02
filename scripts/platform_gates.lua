@@ -87,11 +87,13 @@ function M.place_gate_controls(surface, force_name)
             gate.gate_unit_number = gate_entity.unit_number
         end
 
-        local computer = surface.create_entity {
+        -- No computer on Nauvis: the starting room's airlocks are decoration
+        -- now, and nothing on this surface is bought from a gate.
+        local computer = surface.name ~= "nauvis" and surface.create_entity {
             name = "otc-gate-computer",
             position = a.computer,
             force = force_name,
-        }
+        } or nil
         if computer then
             computer.minable = false
             computer.destructible = false
