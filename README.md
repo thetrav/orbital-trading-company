@@ -4,19 +4,27 @@ A Factorio 2.0 mod where players start on a 10x10 concrete platform floating in 
 
 ## How It Works
 
-- A green circuit wire connects the combinator to the buy chest
-- The buy chest reads the circuit network signals and fills itself to match, deducting 1 credit per item
-- The chest's "Read contents" option is disabled to prevent feedback loops
+- Every company is given an orbital station, and the **Trading Silo** in it is where all
+  buying and selling happens
+- A buy order names a quantity to keep in the silo; it is topped back up whenever it runs down
+- A sell order ships everything of that type as it arrives, so anything you do not want sold
+  belongs in a different container
+- Load and unload the silo with inserters, belts, or by hand — it opens as an ordinary
+  container, with the order panel alongside it. Logistic bots ignore it for now
 
 ## Usage
 
-1. Place a **Buy Chest** near a **Constant Combinator**
-2. Connect them with green circuit wire
-3. Set signals on the combinator for the items you want (e.g., 5 iron plate = buy 5 iron plate)
-4. The buy chest automatically fills to match the combinator signals
-5. cost can be found in the market ui, the credits for your company is diplayed in the top center
-6. Use purchased goods to make more advanced intermediates
-7. Place intermediates in a sell chest to get paid for them
+1. Open the **Trading Silo** on your orbital station — the trading panel sits to the right
+   of the usual container window
+2. Press **+** under Buy orders, pick an item, and type the quantity to maintain
+3. Press **+** under Sell orders to have everything of a type sold on arrival
+4. Cost can be found in the market ui, the credits for your company is diplayed in the top center
+5. Use purchased goods to make more advanced intermediates, and sell those back
+
+Instead of configuring it by hand, tick **Control with circuit network** and wire the silo up:
+a positive signal is a quantity to buy and maintain, a negative one sells everything of that
+item, and the green/red/both selector chooses which wires are read. While it is ticked the
+panels show what the wires are asking for and the lists cannot be edited.
 
 Note that there are small transaction costs for buying and selling, if you buy something and immediately sell it you will make a loss.
 
@@ -235,8 +243,9 @@ and walls they used to.
 - Map generation is forced to empty (no resources, water, cliffs, enemies)
 - Pollution and enemy expansion are disabled
 - The intro cutscene and crash site are disabled
-- The buy chest entity type is `container` (not `logistic-container`) with circuit wire connections
-- The buy chest uses requester chest graphics from the base mod
+- The trading silo is a plain `container` wearing the rocket silo's graphics — a real
+  `rocket-silo` cannot hold arbitrary cargo, and a logistic chest with no network to join
+  flashes an alert
 - Game state is stored in `storage` (Factorio 2.0's replacement for `global`)
 
 ---

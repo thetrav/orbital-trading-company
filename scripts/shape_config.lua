@@ -14,8 +14,6 @@ M.ROLES = {
     "pump",
     "silo",
     "teleporter",
-    "buy_chest",
-    "sell_chest",
     "company_monitor",
 }
 

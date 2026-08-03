@@ -1,7 +1,6 @@
 local room_builder = require("scripts.room_builder")
 local room_gates = require("scripts.shape_hooks.room_gates")
-local buy_chest = require("scripts.buy_chest")
-local sell_chest = require("scripts.sell_chest")
+local trading_silo = require("scripts.trading_silo")
 
 local M = {}
 
@@ -10,7 +9,7 @@ local function first(ctx, role)
     return bucket and bucket[1]
 end
 
---- The orbital station's own surface: trading chests, silo and the return trip.
+--- The orbital station's own surface: the trading silo and the return trip.
 --- ctx.station_name and ctx.return_target are supplied by the caller.
 function M.run(ctx)
     local surface = ctx.surface
@@ -35,24 +34,7 @@ function M.run(ctx)
 
     local silo = first(ctx, "silo")
     if silo and silo.entity then
-        storage.rocket_silos = storage.rocket_silos or {}
-        storage.rocket_silos[silo.entity.unit_number] = ctx.station_name
-    end
-
-    local buy = first(ctx, "buy_chest")
-    if buy and buy.entity then buy_chest.register(buy.entity) end
-
-    local sell = first(ctx, "sell_chest")
-    if sell and sell.entity then sell_chest.register(sell.entity) end
-
-    local combinator = first(ctx, "buy_chest_combinator")
-    if combinator and combinator.entity and buy and buy.entity then
-        local cw = combinator.entity.get_wire_connector(defines.wire_connector_id.circuit_green, false)
-        local bw = buy.entity.get_wire_connector(defines.wire_connector_id.circuit_green, false)
-        if cw and bw then
-            ---@diagnostic disable-next-line: undefined-field
-            cw.connect_to(bw)
-        end
+        trading_silo.register(silo.entity)
     end
 
     local teleporter = first(ctx, "return_teleporter")

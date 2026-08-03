@@ -21,7 +21,7 @@ local direction = { north = 0, east = 4, south = 8, west = 12 }
 local ODD_SIZED = {
     ["otc-platform-wall"] = true, ["gate"] = true, ["otc-gate-computer"] = true,
     ["otc-water-pump"] = true, ["rocket-silo"] = true, ["otc-teleporter"] = true,
-    ["otc-buy-chest"] = true, ["otc-sell-chest"] = true, ["constant-combinator"] = true,
+    ["otc-trading-silo"] = true, ["constant-combinator"] = true,
     ["solar-panel"] = true, ["assembling-machine-1"] = true, ["lab"] = true,
     ["transport-belt"] = true, ["inserter"] = true, ["otc-supply-belt"] = true,
     ["otc-intake-belt"] = true, ["electric-mining-drill"] = true,
@@ -301,14 +301,11 @@ do
     local entities = walls_to_entities(walls)
     entities[#entities + 1] = gate_entity(0, 7, "south")
     entities[#entities + 1] = computer_entity(0, 8, "south")
-    entities[#entities + 1] = { name = "rocket-silo", position = snap("rocket-silo", 0, 0), role = "silo" }
-    entities[#entities + 1] = { name = "otc-buy-chest", position = snap("otc-buy-chest", -6, 6), role = "buy_chest" }
     entities[#entities + 1] = {
-        name = "constant-combinator",
-        position = snap("constant-combinator", -6, 5),
-        role = "buy_chest_combinator",
+        name = "otc-trading-silo",
+        position = snap("otc-trading-silo", 0, 0),
+        role = "silo",
     }
-    entities[#entities + 1] = { name = "otc-sell-chest", position = snap("otc-sell-chest", 6, 6), role = "sell_chest" }
     entities[#entities + 1] = {
         name = "otc-teleporter",
         position = snap("otc-teleporter", 0, 5),

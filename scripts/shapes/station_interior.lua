@@ -138,10 +138,7 @@ return {
             side = "south",
             skip_create = true,
         },
-        { name = "rocket-silo", position = { 0.5, 0.5 }, role = "silo" },
-        { name = "otc-buy-chest", position = { -5.5, 6.5 }, role = "buy_chest" },
-        { name = "constant-combinator", position = { -5.5, 5.5 }, role = "buy_chest_combinator" },
-        { name = "otc-sell-chest", position = { 6.5, 6.5 }, role = "sell_chest" },
+        { name = "otc-trading-silo", position = { 0.5, 0.5 }, role = "silo" },
         {
             name = "otc-teleporter",
             position = { 0.5, 5.5 },

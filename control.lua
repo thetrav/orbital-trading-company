@@ -7,8 +7,8 @@ local nauvis_guard = require("scripts.nauvis_guard")
 local pricing = require("scripts.pricing")
 local market_gui = require("scripts.market_gui")
 local expand_gui = require("scripts.expand_gui")
-local buy_chest = require("scripts.buy_chest")
-local sell_chest = require("scripts.sell_chest")
+local trading_silo = require("scripts.trading_silo")
+local trading_silo_gui = require("scripts.trading_silo_gui")
 local supply_demand = require("scripts.supply_demand")
 local company_gui = require("scripts.company_gui")
 local company = require("scripts.company")
@@ -23,8 +23,6 @@ local district = require("scripts.district")
 local research = require("scripts.research")
 local supply_belts = require("scripts.supply_belts")
 
-local BUY_CHEST_NAME = "otc-buy-chest"
-local SELL_CHEST_NAME = "otc-sell-chest"
 local NAUVIS_FORCE = "Nauvis"
 local STARTING_PERSONAL_CREDITS = 10000
 
@@ -74,6 +72,7 @@ local function ensure_company_setup()
     end
 
     stock.init()
+    trading_silo.init()
     research.init()
     district.init()
     company_facilities.init()
@@ -152,31 +151,6 @@ local function ensure_company_setup()
                 sum = sum + holder.shares
             end
             comp.shares_issued = sum
-        end
-    end
-    for _, data in pairs(storage.buy_chests or {}) do
-        local c = data.chest
-        ---@diagnostic disable-next-line: undefined-field
-        if not data.force_name and c and c.valid then
-            ---@diagnostic disable-next-line: undefined-field
-            data.force_name = c.force.name
-        end
-    end
-    for unit_number, data in pairs(storage.sell_chests or {}) do
-        if type(data) == "userdata" then
-            ---@diagnostic disable-next-line: undefined-field
-            if data.valid then
-                storage.sell_chests[unit_number] = {
-                    chest = data,
-                    ---@diagnostic disable-next-line: undefined-field
-                    force_name = data.force.name,
-                }
-            end
-        else
-            local c = data.chest
-            if c and not data.force_name and c.valid then
-                data.force_name = c.force.name
-            end
         end
     end
 end
@@ -346,8 +320,7 @@ local market_refresh_counter = 0
 local MARKET_REFRESH_INTERVAL = 30
 
 script.on_nth_tick(1, function()
-    buy_chest.process()
-    sell_chest.process()
+    trading_silo.process()
     supply_belts.process()
     supply_demand.process_tick()
     research.sync_all_progress()
@@ -371,6 +344,7 @@ script.on_nth_tick(1, function()
                 market_gui.refresh_market_prices(player)
             end
             company_gui.refresh_nauvis_stock(player)
+            trading_silo_gui.refresh(player)
         end
     end
 end)
@@ -384,8 +358,7 @@ script.on_event(defines.events.on_built_entity, function(event)
     end
     if nauvis_guard.on_built(entity, event.player_index) then return end
     if research.block_lab(entity, event.player_index) then return end
-    buy_chest.register(entity)
-    sell_chest.register(entity)
+    trading_silo.register(entity)
 end)
 
 script.on_event(defines.events.on_robot_built_entity, function(event)
@@ -443,6 +416,13 @@ script.on_event(defines.events.on_gui_opened, function(event)
         return
     end
 
+    -- The vanilla container window is left to open as it is; the trading panel
+    -- anchors to its side so the player inventory and shift-click still work.
+    if entity.name == trading_silo.NAME then
+        trading_silo_gui.open(player, entity)
+        return
+    end
+
     if entity.name == "rocket-silo" then
         local un = entity.unit_number
         if un and storage.rocket_silos and storage.rocket_silos[un] then
@@ -484,10 +464,8 @@ script.on_event(defines.events.on_entity_died, function(event)
     local entity = event.entity
     if not entity or not entity.valid then return end
     local name = entity.name
-    if name == BUY_CHEST_NAME then
-        buy_chest.unregister(entity.unit_number)
-    elseif name == SELL_CHEST_NAME then
-        sell_chest.unregister(entity.unit_number)
+    if name == trading_silo.NAME then
+        trading_silo.unregister(entity.unit_number)
     elseif name == "rocket-silo" then
         if storage.rocket_silos then
             storage.rocket_silos[entity.unit_number] = nil
@@ -507,10 +485,8 @@ script.on_event(defines.events.on_player_mined_entity, function(event)
     local entity = event.entity
     if not entity or not entity.valid then return end
     local name = entity.name
-    if name == BUY_CHEST_NAME then
-        buy_chest.unregister(entity.unit_number)
-    elseif name == SELL_CHEST_NAME then
-        sell_chest.unregister(entity.unit_number)
+    if name == trading_silo.NAME then
+        trading_silo.unregister(entity.unit_number)
     elseif name == "rocket-silo" then
         if storage.rocket_silos then
             storage.rocket_silos[entity.unit_number] = nil
@@ -527,6 +503,12 @@ end)
 
 
 script.on_event(defines.events.on_gui_click, function(event)
+    if string.match(event.element.name, "^otc_silo_") then
+        local player = game.get_player(event.player_index)
+        if player then trading_silo_gui.on_click(player, event.element) end
+        return
+    end
+
     if event.element.name == "otc_shape_config_close" then
         local player = game.get_player(event.player_index)
         if player then shape_config.close(player) end
@@ -625,10 +607,22 @@ end)
 
 script.on_event(defines.events.on_gui_selected_tab_changed, function(event)
     local player = game.get_player(event.player_index)
-    if player then company_gui.handle_tab_changed(player, event.element) end
+    if not player then return end
+    company_gui.handle_tab_changed(player, event.element)
+end)
+
+script.on_event(defines.events.on_gui_closed, function(event)
+    local player = game.get_player(event.player_index)
+    if player then trading_silo_gui.on_closed(player, event.entity) end
 end)
 
 script.on_event(defines.events.on_gui_elem_changed, function(event)
+    if string.match(event.element.name, "^otc_silo_") then
+        local player = game.get_player(event.player_index)
+        if player then trading_silo_gui.on_elem_changed(player, event.element) end
+        return
+    end
+
     local unit_number, lane = string.match(event.element.name, "^otc_shape_config_item_(%d+)_(%a+)$")
     if unit_number then
         local player = game.get_player(event.player_index)
@@ -664,6 +658,11 @@ script.on_event(defines.events.on_gui_checked_state_changed, function(event)
     local player = game.get_player(event.player_index)
     if not player then return end
 
+    if string.match(event.element.name, "^otc_silo_") then
+        trading_silo_gui.on_checked(player, event.element)
+        return
+    end
+
     if event.element.name == "otc_place_clear" then
         shape_place.handle_clear_toggle(player, event.element.state)
         return
@@ -698,7 +697,9 @@ end)
 script.on_event(defines.events.on_gui_text_changed, function(event)
     local player = game.get_player(event.player_index)
     if not player then return end
-    if event.element.name == "otc_market_search" then
+    if string.match(event.element.name, "^otc_silo_") then
+        trading_silo_gui.on_text_changed(player, event.element)
+    elseif event.element.name == "otc_market_search" then
         market_gui.rebuild_market_list(player)
     elseif event.element.name == "otc_trading_search" then
         trading_gui.handle_search(player, event.element.text)

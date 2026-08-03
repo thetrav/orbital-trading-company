@@ -23,7 +23,9 @@ mining target, and no assembler has started. Guard with `if game.tick == 0 then 
 
 ## Tests
 
-`test/` holds [busted](https://lunarmodules.github.io/busted/) specs, run by `validate.sh` step 3 and configured by `.busted`. Install with `luarocks install --local busted`; the step SKIPs (loudly) if the binary is missing, and honours a `BUSTED` env var override.
+`test/` holds [busted](https://lunarmodules.github.io/busted/) specs, run by `validate.sh` step 3 and configured by `.busted`. Install with `luarocks install --local busted`; the step takes busted from `$BUSTED`, else from `PATH`, else from `~/.luarocks/bin`. When it is missing entirely it falls back to `test/minimal_runner.lua`, a cut-down runner that covers the describe/it/assert subset these specs use, so the suite still runs on a plain `lua` — write specs against busted's API, not the fallback's.
+
+`factorio_mock.gui_root()` returns a stand-in for `LuaGuiElement` (children reachable by name, `children` handing back a copy, style fields writable), which is what lets a GUI module be built and driven in a spec rather than only in game.
 
 `test/factorio_mock.lua` stands up the runtime globals (`game`, `storage`, `prototypes`, `defines`) that a module under test reads — `mock.setup{...}` takes a technology-name → spec table and wires prerequisites by name. Call `mock.teardown()` in `after_each`, and clear `package.loaded` for the module under test before requiring it so each spec gets fresh state.
 
@@ -31,7 +33,7 @@ Prefer adding a spec here over ad-hoc probe scripts that get `require`d from `co
 
 ## What this mod is
 
-Factorio 2.0 mod "Orbital Trading Company" (`info.json`, version 0.1.0, depends on `factorio-charts >= 1.0.0`). Players spawn on a 10x10 floating platform on a resource-free Nauvis, join or create a **company** (implemented as a Factorio force), and expand a network of interlinked platform "rooms" (hubs, corridors, factories, orbital stations, asteroid mines, water pumps). Buy/sell chests interact with a shared credit economy; a dynamic market prices items and reacts to supply and demand.
+Factorio 2.0 mod "Orbital Trading Company" (`info.json`, version 0.1.0, depends on `factorio-charts >= 1.0.0`). Players spawn on a 10x10 floating platform on a resource-free Nauvis, join or create a **company** (implemented as a Factorio force), and expand a network of interlinked platform "rooms" (hubs, corridors, factories, orbital stations, asteroid mines, water pumps). A company's orbital trading silo buys and sells against a shared credit economy; a dynamic market prices items and reacts to supply and demand.
 
 ## Code layout
 
@@ -49,8 +51,8 @@ Factorio 2.0 mod "Orbital Trading Company" (`info.json`, version 0.1.0, depends 
 
 ## Runtime module map (`scripts/`)
 
-- `buy_chest.lua` — buy chest reads green+red circuit signals as desired counts, buys at `floor(price * 1.01 + 0.5)`, deducts from company credits. `process()` runs every tick. Registered in `storage.buy_chests[unit_number] = { chest, force_name }`.
-- `sell_chest.lua` — auto-sells contents at `floor(price * 0.99 + 0.5)`. Same storage shape.
+- `trading_silo.lua` — the whole trading mechanism, model and simulation only. A company's orbital `otc-trading-silo` holds ordered buy and sell lists; a buy order is a **quantity to maintain** (bought at `floor(price * 1.01 + 0.5)`), a sell order ships **everything** of that type (at `* 0.99`). An item is never on both lists. `resolve()` returns the orders in force this tick — the stored lists, or, when circuit control is on, the wires instead: a positive signal is a buy target, a negative one sells all, zero is ignored. `process()` runs every tick and buys as much as the tightest of credits, Nauvis stock and free slots allows, in list order.
+- `trading_silo_gui.lua` — the order panel: buy and sell lists side by side, the circuit checkbox and its wire selector. It lives in `player.gui.relative` **anchored to the silo's own container window**, not in `gui.screen`, so the vanilla inventory GUI is left completely alone. View only; every mutation goes through `trading_silo`.
 - `pricing.lua` — BFS through tech tree computing a static base price per item (raw resources = 100; recipe cost = ingredients + smelting fuel + `energy * 10`/s). Runs on init/load into `storage.prices`. This is now only the **anchor**; the traded price is the anchor scaled by Nauvis's stock level.
 - `stock.lua` — Nauvis's finite warehouse, `storage.stock.items[item] = count`. `TARGET_STOCK = 1000`, `SCARCITY_CAP = 20`. `scarcity()` returns `(T/s)^0.7` below target and `(T/s)^2` above, so prices climb as shelves empty and collapse when flooded. The warehouse starts **empty** and nothing is ever seeded: an item with no entry reads as 0 — `TARGET_STOCK` is what Nauvis *wants* to hold, not what it starts with — so a new game begins with everything at the scarcity cap and Nauvis holding only what it mined, made or was sold. `take` never returns more than is held, which means Nauvis cannot sell what nobody has supplied; its own mine blocks are the only thing that breaks that deadlock at the start of a game. `items()` exposes the raw table for listings.
 - `supply_demand.lua` — 10-tick periods aggregate buys/sells; `price_offsets[item]` drift by `demand * 0.01`, decay `* 0.95`. Applied to the anchor *before* the scarcity multiple. Now partly redundant with stock movement — see `doc/nauvis_economy.md` §1.
@@ -87,7 +89,7 @@ Factorio 2.0 mod "Orbital Trading Company" (`info.json`, version 0.1.0, depends 
 - `players[player.index]` — `company`, `allowed_items`, `market_filter`, `pinned_items`, `trading_selected_force`, `trading_chart_selection`, `trading_chart_state`, `trading_list_state`, `trading_search_text`, `active_gate`, `selected_shape`, `preview_renderings`; legacy `credits`.
 - `companies[force_name] = { credits }` — the balance sheet.
 - `station_forces[station_name]`, `rocket_silos[unit_number]`, `otc_teleporters[unit_number]`, `otc_return_teleporters[unit_number] = { surface, position }`, `otc_station_index`.
-- `buy_chests` / `sell_chests` — keyed by unit_number.
+- `trading_silos[unit_number] = { entity, force_name, buy, sell, circuit }` — `buy` and `sell` are **arrays**, not maps: their order is the player's priority and decides who is served when credits run short. `circuit = { enabled, wire }` where wire is `"green"`, `"red"` or `"both"`.
 - `prices`, `supply_demand { tick_counter, period_buys, period_sells, price_offsets }`.
 - `stock { items }` — Nauvis's warehouse. Not a Factorio inventory; nothing in the world holds it.
 - `supply_belts[unit_number] = { entity, left, right }`, `intake_belts[unit_number] = { entity }`.
@@ -115,9 +117,12 @@ Factorio 2.0 mod "Orbital Trading Company" (`info.json`, version 0.1.0, depends 
 
 ## Gotchas
 
-- Buy/sell multipliers live in **three** places: `buy_chest.lua`/`sell_chest.lua` (execution) and `market_gui.lua` (display). Actual values are 1.01/0.99
-- Players join a company via GUI; `player.force` is set to the company force, so chest `force_name` is captured at build/register time and must not be read from the entity afterwards.
-- Rocket-silo GUI is suppressed for otc station silos (`storage.rocket_silos`) — delivery via silo is not yet implemented.
+- Buy/sell multipliers live in **two** places: `trading_silo.lua` (execution) and `market_gui.lua` (display). Actual values are 1.01/0.99
+- Players join a company via GUI; `player.force` is set to the company force, so a silo's `force_name` is captured at register time and must not be read from the entity afterwards.
+- **The trading silo is a `container`, not a `rocket-silo`.** A real silo's input inventory is recipe-filtered to rocket parts and its only cargo path is the rocket, so it cannot be a 100-slot container. `otc-trading-silo` borrows the silo's collision box and sprite fields (`shadow_sprite`, `hole_sprite`, the two doors, `base_day_sprite`) as static `picture` layers, so it reads as a silo and drops into the station shape on the same footprint. There is no launch animation and no power draw until rate limiting exists. `tools/probes/trading_silo.lua` pins the 100 slots, inserter loading, a live buy/sell cycle, and that bots ignore it.
+- **It is deliberately not a `logistic-container`.** It was one — `logistic_mode = "storage"`, which does let bots deposit and withdraw — but a logistic chest standing outside any roboport coverage flashes a "not connected to network" alert, and the orbital station has no network. Bot access is meant to come back later; restoring `type = "logistic-container"` plus `logistic_mode` and `max_logistic_slots` is the entire change, and the probe's `want=false` line is what has to flip with it.
+- **Only the orbital silo trades.** The launch bay on Nauvis keeps a decorative `rocket-silo`, still registered in `storage.rocket_silos` for the sole purpose of suppressing the vanilla silo GUI.
+- **Never take over `player.opened` for the silo.** Doing so removes the vanilla container window, and with it the player's inventory panel, shift-click transfer and filters — none of which can be reproduced by a custom frame. The trading panel is a `player.gui.relative` frame anchored to `defines.relative_gui_type.container_gui` with `name = "otc-trading-silo"`, so it appears to the right of the normal window and closes with it (`on_gui_closed` carries `event.entity`, not an element). `tools/probes/relative_gui_types.lua` lists the anchor enum.
 - New surface creation (orbital stations) requires explicit chunk generation and `treat_missing_as_default = false` autoplace settings to stay empty.
 - **Inserter `direction` points at the pickup, not the drop.** An inserter facing `east` picks up from the tile to its east and drops to its west. Getting this backwards is silent — the inserter just reports `waiting_for_source_items` forever.
 - **A mining drill binds to its ore when it is created.** Build resources before entities or the drill reports `no_minable_resources` forever — rotating it in game is what forces a re-scan. `shape_def.apply` orders it correctly and `test/shape_apply_spec.lua` pins that.

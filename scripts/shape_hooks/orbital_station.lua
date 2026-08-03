@@ -31,6 +31,8 @@ function M.run(ctx)
     local station_name = "otc-station-" .. storage.otc_station_index
     log("orbital_station: creating surface " .. station_name)
 
+    -- The launch bay's silo is decoration: trading happens at the orbital one,
+    -- and this registration exists only to keep the vanilla silo GUI shut.
     local silo = (ctx.roles.silo or {})[1]
     if silo and silo.entity then
         storage.rocket_silos = storage.rocket_silos or {}

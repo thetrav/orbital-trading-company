@@ -32,9 +32,8 @@ local ROLE_BY_NAME = {
     ["otc-gate-computer"] = "computer",
     ["otc-water-pump"] = "pump",
     ["rocket-silo"] = "silo",
+    ["otc-trading-silo"] = "silo",
     ["otc-teleporter"] = "teleporter",
-    ["otc-buy-chest"] = "buy_chest",
-    ["otc-sell-chest"] = "sell_chest",
     ["otc-company-monitor"] = "company_monitor",
     ["lab"] = "lab",
     -- These two prototypes exist for exactly one purpose each, so their role is

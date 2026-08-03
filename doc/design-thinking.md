@@ -13,10 +13,10 @@
 * How to best manage throughput on buy/sell points, loaders, or bigger entities, or more entities?
   + conflicted.  I like the circuit system for managing the buy chest at the moment as players can do smart stuff with it, however getting stuff out of it with grabbers feels very limited.  Perhaps a larger delivery entity that has conveyors sticking out of it.  The rate is then governed by multiple factors, both the delivery speed for packages of resources and then conveyor speed for actual transfer of goods from the depot into the players control (they can of course always manually unload)
 
-# base expansion
+# orbital expansion
 
 * Current module system is interesting but players might want more control.  I don't think we want to do free-build but perhaps they can pay extra for "bespoke" modules as oposed to the cheap pre-fabs?
-
+* current starting platform is too cramped, needs to be bigger
 
 # asteroids and planets
 * Asteroids probably shouldn't be as simple as they currently are.  I think probably rather than just buying an asteroid players should by an asteroid capture attachement, then they can interact with that to spend resources to capture an asteroid and/or dispose of one once it's been mined out
@@ -30,11 +30,19 @@
 
 * Nauvis wants ingredients to expand, however some of the entities in the starting shape are not available for the player to manufacture, how to resolve?
 
+
+
 # Nauvis
 * It would be good if the homeworld stayed interesting and somewhat relevant.
 * Perhaps the homeworld can have a periodic wave defense game, where it has turrets and makes ammo for them, this provides a resource sync and if the players don't collaboratively ensure sufficient supply the defenses may get overrun which provides more demand but perhaps a loss of services or eventually triggers game end?
 * We can use robo ports and radars to ensure players can look at the buildings in nauvis, if we make the rocket silos delivery machines we can use underground conveyors to show things being loaded/unloaded
 * Nauvis got a re-build where it has an expansion mechanism, however the shape of the expansions is very grid like and boring, figure out a way to make it look nicer as it expands
+* I think chasing auto placement is a fools errand, instead we should let the player with the highest bond share be the Mayor and they can select the positioning of the expansion once it can be afforded.
+* I'm not really happy with the way mines are currently implemented.  I think there's something really satisfying with the wait the main game encourages going out and finding deposits then finding ways to get the iron back.  I think probably we want to try and retain that, but also make it part of the nauvis expansion system, not just a player build.
+
+# Threat
+
+* My son thinks that it's good for biters to not be in the game.  I think that there should probably be an option for biters to be in the game on nauvis, it's a resource drain, it's a use for some of the more interesting looking buildings, it's a reason not to spread out too far.  It just needs to be managed such that they are not oppressive as they are not really supposed to be the focus
 
 # forces
 

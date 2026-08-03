@@ -4,7 +4,7 @@ set -uo pipefail
 MOD_DIR="$(cd "$(dirname "$0")" && pwd)"
 FACTORIO_BIN="$HOME/.local/share/Steam/steamapps/common/Factorio/bin/x64/factorio"
 FACTORIO_MODS="$HOME/.factorio/mods"
-BUSTED="${BUSTED:-$HOME/.luarocks/bin/busted}"
+BUSTED="${BUSTED:-$(command -v busted || echo "$HOME/.luarocks/bin/busted")}"
 TMP_MAP="/tmp/otc-validate-$$"
 RC=0
 
@@ -26,8 +26,17 @@ if [ -x "$BUSTED" ]; then
     else
         RC=1
     fi
+elif command -v lua >/dev/null 2>&1; then
+    # busted is not installed, so fall back to the cut-down runner in test/.
+    # Same specs, fewer features -- install busted to get the real thing back.
+    echo "busted not found at $BUSTED, using test/minimal_runner.lua" >&2
+    if (cd "$MOD_DIR" && lua test/minimal_runner.lua test/*_spec.lua); then
+        echo "OK"
+    else
+        RC=1
+    fi
 else
-    echo "SKIPPED: busted not found at $BUSTED (luarocks install --local busted)" >&2
+    echo "SKIPPED: no busted at $BUSTED and no lua on PATH" >&2
 fi
 echo ""
 
