@@ -1,4 +1,3 @@
-local room_builder = require("scripts.room_builder")
 local room_gates = require("scripts.shape_hooks.room_gates")
 local trading_silo = require("scripts.trading_silo")
 
@@ -14,23 +13,11 @@ end
 function M.run(ctx)
     local surface = ctx.surface
 
-    for _, entry in ipairs(ctx.roles.gate or {}) do
-        local gx, gy = room_gates.tile_of(entry.def.position)
-        local gate = room_builder.place_gate(surface, entry.def.side, { gx, gy }, ctx.force_name)
-        local computer
-        local computer_def = first(ctx, "computer")
-        if computer_def then
-            computer = room_builder.fix(surface.create_entity {
-                name = "otc-gate-computer",
-                position = computer_def.def.position,
-                force = ctx.force_name,
-            })
-        end
-        -- Registered facing north: the gate sits on the station's south wall and
-        -- any future expansion from it heads away from the room.
-        room_builder.register_gate(gx, gy, "north", gate, computer, surface.name)
-        entry.entity = gate
-    end
+    -- One airlock in the middle of each wall, each with its own computer, so a
+    -- station expands in all four directions. Nothing here is special enough to
+    -- need its own gate code: the sides are the compass DIR_VECTOR uses, so the
+    -- shared hook registers each gate expanding away from the room.
+    room_gates.run(ctx)
 
     local silo = first(ctx, "silo")
     if silo and silo.entity then

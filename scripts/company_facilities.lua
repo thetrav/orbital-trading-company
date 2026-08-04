@@ -15,6 +15,10 @@ local FACILITIES = {
     { shape = "orbital_station", label = "launch bay" },
 }
 
+-- Where the starting room stands, and so where the players walking to a launch
+-- bay are coming from. Its airlock turns to face this.
+local SPAWN = { x = 0, y = 0 }
+
 function M.init()
     storage.company_facilities = storage.company_facilities or {}
     return storage.company_facilities
@@ -37,7 +41,7 @@ function M.ensure_for(force_name)
     local sites = {}
     for _, facility in ipairs(FACILITIES) do
         local _, _, centre = district.build(surface, facility.shape, force_name,
-            { owned_by_force = true, zone = "company" })
+            { owned_by_force = true, zone = "company", face_towards = SPAWN })
         sites[#sites + 1] = {
             shape = facility.shape,
             label = facility.label,

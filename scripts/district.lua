@@ -107,11 +107,17 @@ end
 
 --- Take the next sub-cell that fits this shape. Each size keeps its own
 --- part-filled module per zone, so mine blocks queue up four to a module
---- however many other things are built between them.
-function M.claim(def, zone_name)
+--- however many other things are built between them. `square` is for a shape
+--- that will be rotated in its cell: the cell has to hold it either way round,
+--- so it is claimed by the longer of its two sides.
+function M.claim(def, zone_name, square)
     zone_name = zone_name or "nauvis"
     local zone = zone_state(zone_name)
     local cols, rows = M.footprint(def)
+    if square then
+        cols = math.max(cols, rows)
+        rows = cols
+    end
     local key = cols .. "x" .. rows
     local capacity = (2 / cols) * (2 / rows)
 
@@ -131,13 +137,44 @@ end
 --- Where a shape's origin goes for its clearance box to sit centred in a cell.
 --- A shape as wide as its cell lands half a tile either way; rounding down puts
 --- the overhang on the side the cell has, rather than out over the path.
-function M.origin_for(def, centre)
+function M.origin_for(def, centre, steps)
     local box = def.clearance_box or shape_def.tile_bounds(def)
     if not box then return { x = centre.x, y = centre.y } end
+    local x1, y1 = shape_def.rotate_tile(box[1][1], box[1][2], steps or 0)
+    local x2, y2 = shape_def.rotate_tile(box[2][1], box[2][2], steps or 0)
     return {
-        x = math.floor(centre.x - (box[1][1] + box[2][1]) / 2),
-        y = math.floor(centre.y - (box[1][2] + box[2][2]) / 2),
+        x = math.floor(centre.x - (x1 + x2) / 2),
+        y = math.floor(centre.y - (y1 + y2) / 2),
     }
+end
+
+--- Which way a shape's gate ends up pointing. The wall nearest `target` is the
+--- one that gets the airlock: whichever axis the target is further along wins,
+--- so a room out at the end of a row opens along the row and one straight out
+--- from the compound opens back towards it.
+local function dir_towards(centre, target)
+    local dx, dy = target.x - centre.x, target.y - centre.y
+    if math.abs(dx) >= math.abs(dy) then
+        return dx >= 0 and "east" or "west"
+    end
+    -- The compass here is the codebase's y-flipped one: north is +y.
+    return dy >= 0 and "north" or "south"
+end
+
+--- Quarter turns that swing a shape's gate round to face `target`.
+function M.facing_steps(def, centre, target)
+    local side = def.connection and def.connection.side
+    if not side then
+        for _, e in ipairs(def.entities or {}) do
+            if e.role == "gate" and e.side then
+                side = e.side
+                break
+            end
+        end
+    end
+    if not side then return 0 end
+    return (shape_def.steps_for_dir(dir_towards(centre, target))
+        - shape_def.steps_for_dir(side)) % 4
 end
 
 --- Which grass a tile gets. Integer arithmetic against a prime modulus, so the
@@ -280,7 +317,8 @@ end
 --- is the force the shape belongs to; the poles and the path always belong to
 --- Nauvis, because the grid is state infrastructure everyone shares.
 --- `opts.zone` picks which way the district grows: "nauvis" north, "company"
---- south.
+--- south. `opts.face_towards` is a world position the shape's gate should open
+--- onto, which rotates the shape in its cell.
 function M.build(surface, shape_name, owner, opts)
     local def = shape_registry.get(shape_name)
     if not def then
@@ -289,11 +327,13 @@ function M.build(surface, shape_name, owner, opts)
     end
     opts = opts or {}
 
-    local centre, module_centre = M.claim(def, opts.zone)
+    local centre, module_centre = M.claim(def, opts.zone, opts.face_towards ~= nil)
     lay_ground(surface, module_centre)
 
-    local origin = M.origin_for(def, centre)
+    local steps = opts.face_towards and M.facing_steps(def, centre, opts.face_towards) or 0
+    local origin = M.origin_for(def, centre, steps)
     local ctx = platform.build_shape(surface, shape_name, origin, owner, {
+        steps = steps,
         owned_by_force = opts.owned_by_force,
         context = opts.context,
     })

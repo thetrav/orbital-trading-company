@@ -102,18 +102,20 @@ function M.place_shape(surface, def, origin, steps, force_name, opts)
     return ctx
 end
 
---- Build a registered shape at a fixed world position with no rotation.
+--- Build a registered shape at a fixed world position, unrotated unless
+--- `opts.steps` says otherwise.
 function M.build_shape(surface, shape_name, origin, force_name, opts)
     local def = shape_registry.get(shape_name)
     if not def then
         log("unknown shape: " .. tostring(shape_name))
         return nil
     end
+    local steps = (opts or {}).steps or 0
     if def.clear_area then
-        local box = shape_def.clearance_box(def, origin, 0)
+        local box = shape_def.clearance_box(def, origin, steps)
         if box then room_builder.clear_area(surface, box) end
     end
-    return M.place_shape(surface, def, origin, 0, force_name, opts)
+    return M.place_shape(surface, def, origin, steps, force_name, opts)
 end
 
 function M.show_preview(surface, player, gate_pos, shape)

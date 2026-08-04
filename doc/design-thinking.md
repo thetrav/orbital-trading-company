@@ -30,6 +30,7 @@
 
 * Nauvis wants ingredients to expand, however some of the entities in the starting shape are not available for the player to manufacture, how to resolve?
 
+* Can players corner a market?  Is that a thing?  What would it looks like, is there any interesting fun to be had there
 
 
 # Nauvis
@@ -39,6 +40,10 @@
 * Nauvis got a re-build where it has an expansion mechanism, however the shape of the expansions is very grid like and boring, figure out a way to make it look nicer as it expands
 * I think chasing auto placement is a fools errand, instead we should let the player with the highest bond share be the Mayor and they can select the positioning of the expansion once it can be afforded.
 * I'm not really happy with the way mines are currently implemented.  I think there's something really satisfying with the wait the main game encourages going out and finding deposits then finding ways to get the iron back.  I think probably we want to try and retain that, but also make it part of the nauvis expansion system, not just a player build.
+
+# Research
+
+* Currently research is done by nauvis and shared by all, very care bear.  What if Nauvis does the research but then players need to purchase unlocks?
 
 # Threat
 
