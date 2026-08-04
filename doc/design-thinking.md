@@ -39,6 +39,7 @@
 * We can use robo ports and radars to ensure players can look at the buildings in nauvis, if we make the rocket silos delivery machines we can use underground conveyors to show things being loaded/unloaded
 * Nauvis got a re-build where it has an expansion mechanism, however the shape of the expansions is very grid like and boring, figure out a way to make it look nicer as it expands
 * I think chasing auto placement is a fools errand, instead we should let the player with the highest bond share be the Mayor and they can select the positioning of the expansion once it can be afforded.
+  + bonds and the mayoral election are built (`doc/nauvis_voting.md`) — the mayor is elected rather than being whoever holds the most bonds. Nothing reads the office yet; placement is still `district.lua`'s packer.
 * I'm not really happy with the way mines are currently implemented.  I think there's something really satisfying with the wait the main game encourages going out and finding deposits then finding ways to get the iron back.  I think probably we want to try and retain that, but also make it part of the nauvis expansion system, not just a player build.
 
 # Research

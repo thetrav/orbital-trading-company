@@ -22,6 +22,7 @@ local company_facilities = require("scripts.company_facilities")
 local district = require("scripts.district")
 local research = require("scripts.research")
 local supply_belts = require("scripts.supply_belts")
+local voting = require("scripts.voting")
 
 local NAUVIS_FORCE = "Nauvis"
 local STARTING_PERSONAL_CREDITS = 10000
@@ -82,6 +83,13 @@ local function ensure_company_setup()
     nauvis.init()
     if nauvis_is_new then
         storage.nauvis.minted = storage.nauvis.minted + (storage.companies[NAUVIS_FORCE].credits or 0)
+    end
+    voting.init()
+
+    -- Every player holds a bond in Nauvis from the moment they exist; a save
+    -- written before bonds gives its players theirs on load.
+    for _, player in pairs(game.players) do
+        nauvis.ensure_bonds(player.index)
     end
 
     if storage.players then
@@ -231,6 +239,7 @@ script.on_event(defines.events.on_player_created, function(event)
             player_data.personal_credits = STARTING_PERSONAL_CREDITS
             nauvis.mint(STARTING_PERSONAL_CREDITS, "starting_grant")
         end
+        nauvis.ensure_bonds(player.index)
         market_gui.create_credits_gui(player)
         research.lock_player_research(player)
         player.insert{name = "storage-tank", count = 1}
@@ -298,6 +307,9 @@ script.on_nth_tick(60, function()
     trading_gui.refresh()
     research.start_pending_research()
     nauvis_expansion.process()
+    -- After the expansion pass, so a build that clears the target opens the next
+    -- ballot on the same tick rather than a second later.
+    voting.process()
 end)
 
 script.on_event(defines.events.on_chunk_generated, function(event)
@@ -646,10 +658,6 @@ script.on_event(defines.events.on_gui_selection_state_changed, function(event)
         if force_name then
             trading_gui.handle_force_change(player, force_name)
         end
-        return
-    end
-    if event.element.name == "otc_company_nauvis_research" then
-        company_gui.handle_research_selection(player, event.element)
         return
     end
 end)

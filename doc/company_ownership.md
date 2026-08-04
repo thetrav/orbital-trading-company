@@ -48,13 +48,20 @@ Every mint/burn goes through one helper — `nauvis.mint(amount, reason)` /
 
 Tax is explicitly out of scope. The sinks are buy-chest purchases and expansions.
 
-### Bonds (future, not implemented)
+### Bonds (implemented — see `doc/nauvis_voting.md`)
 
-The long-term intent is that players convert personal credits into Nauvis **bonds**,
-which behave like shares in the state and carry voting weight over Nauvis decisions.
-Nothing is built for this yet, but the Nauvis tab is laid out with the section present
-and disabled so the shape is visible, and `storage.nauvis.bonds` is reserved in the
-schema so the migration does not need rewriting later.
+Players convert personal credits into Nauvis **bonds**, which behave like shares in the
+state and carry voting weight over Nauvis decisions. Every player is issued one on
+creation; more are priced at a percentage of `nauvis.total_value()` multiplied by the
+bonds the buyer already holds, and buying burns the price.
+`storage.nauvis.bonds[player_index]` is the holding, and `scripts/voting.lua` is the only
+thing that reads it as weight.
+
+Note for §3: `nauvis.total_value()` is the first thing in the codebase that wants a
+whole-world valuation, and it currently approximates one as money supply plus the
+warehouse. When `valuation.lua` lands, company book value belongs in that sum — bond
+pricing and company valuation should not end up with two different ideas of what the
+world is worth.
 
 ### Shares, and one company at a time
 
@@ -384,10 +391,8 @@ defaulting to Nauvis, so an auction winner slots in unchanged.
 
 ### `storage.nauvis.bonds`
 
-Reserved and empty, with the disabled UI section described in §4. No function stub — the
-bond system has no current behaviour to stand in for.
-
-```lua
--- SEAM: bonds. Nauvis-issued instruments carrying governance votes; storage key is
--- reserved so the migration in ensure_company_setup() does not need revisiting.
-```
+No longer a seam — bonds and the ballots they weight are built. See
+`doc/nauvis_voting.md`. The three decisions §7 wanted a generic vote for (admissions,
+dividend authority, share auctions) are all *company* decisions and still unbuilt;
+`scripts/voting.lua` is the primitive to reach for when they land, but its ballots are
+weighted by bonds, so a company vote needs a share-weighted variant.

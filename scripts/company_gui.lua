@@ -7,6 +7,7 @@ local item_filter = require("scripts.item_filter")
 local research = require("scripts.research")
 local nauvis_expansion = require("scripts.nauvis_expansion")
 local stock = require("scripts.stock")
+local voting = require("scripts.voting")
 
 local M = {}
 
@@ -226,60 +227,148 @@ local function current_research_caption()
     return { "", "Researching: ", format_tech_name(current), string.format("  (%.0f%%)", progress * 100) }
 end
 
--- The dropdown is player-editable, so its options are only rewritten when the
--- underlying frontier actually changes -- otherwise the periodic refresh would stomp
--- whatever the player had highlighted before they got to press Apply.
-local function populate_research_dropdown(dropdown, player_data)
-    local available = research.get_available_technologies()
-    local previous = player_data.nauvis_research_options
-    -- The dropdown's own item count matters as well as the cached list: reopening the
-    -- tab builds a fresh (empty) dropdown while the cache still holds the old options,
-    -- and comparing only the cache would leave the new element unpopulated.
-    local changed = #dropdown.items ~= #available or not previous or #previous ~= #available
-    if not changed then
-        for i = 1, #available do
-            if previous[i] ~= available[i] then
-                changed = true
-                break
+local BALLOT_ROOT = "otc_company_ballot_"
+local BALLOT_TIMER = "otc_company_ballot_timer_"
+local BALLOT_PICK = "otc_company_ballot_pick_"
+local BALLOT_YOURS = "otc_company_ballot_yours_"
+local BALLOT_TALLY = "otc_company_ballot_tally_"
+local BALLOT_COUNT = "otc_company_ballot_count_"
+
+local function ballot_timer_caption(ballot)
+    local remaining = math.max(ballot.end_tick - game.tick, 0)
+    return string.format("Closes in %d:%02d -- %d of %d bonds cast",
+        math.floor(remaining / 3600), math.floor(remaining / 60) % 60,
+        select(2, voting.tally(ballot.kind)), voting.eligible_weight())
+end
+
+local function ballot_yours_caption(player, kind)
+    local weight = voting.weight(player.index)
+    if weight <= 0 then
+        return "You hold no bonds, so you have no vote."
+    end
+    local ballot = voting.active(kind)
+    local vote = voting.get_vote(player.index, kind)
+    local label = vote and voting.option_label(ballot, vote) or "not cast"
+    return { "", string.format("Your %d bond(s): ", weight), label }
+end
+
+local function ballot_count_caption(option, counts)
+    return { "", option.label, string.format(": %d", counts[option.key] or 0) }
+end
+
+--- One renderer for all three ballots. The option list is frozen when a ballot
+--- opens, so the dropdown's items are written once and only captions are
+--- refreshed -- the periodic refresh must never move a selection out from under
+--- someone mid-click.
+local function build_ballot_section(player, content, kind)
+    local flow = content.add { type = "flow", name = BALLOT_ROOT .. kind, direction = "vertical" }
+    local ballot = voting.active(kind)
+    if not ballot then
+        flow.add { type = "label", caption = voting.idle_caption(kind) }
+        return flow
+    end
+
+    flow.add {
+        type = "label",
+        name = BALLOT_TIMER .. kind,
+        caption = ballot_timer_caption(ballot),
+        style = "caption_label",
+    }
+
+    local row = flow.add { type = "flow", direction = "horizontal" }
+    row.style.vertical_align = "center"
+    row.add { type = "label", caption = "Vote:" }
+    local items, selected_index = {}, 0
+    local current = voting.get_vote(player.index, kind)
+    for index, option in ipairs(ballot.options) do
+        items[index] = option.label
+        if option.key == current then selected_index = index end
+    end
+    local dropdown = row.add {
+        type = "drop-down",
+        name = BALLOT_PICK .. kind,
+        items = items,
+        selected_index = selected_index,
+    }
+    dropdown.style.horizontally_stretchable = true
+    row.add {
+        type = "button",
+        name = "otc_company_ballot_vote_" .. kind,
+        caption = "Cast",
+        style = "green_button",
+    }
+
+    flow.add {
+        type = "label",
+        name = BALLOT_YOURS .. kind,
+        caption = ballot_yours_caption(player, kind),
+        style = "caption_label",
+    }
+
+    local tally = flow.add { type = "flow", name = BALLOT_TALLY .. kind, direction = "vertical" }
+    local counts = voting.tally(kind)
+    for _, option in ipairs(ballot.options) do
+        local label = tally.add {
+            type = "label",
+            name = BALLOT_COUNT .. kind .. "_" .. option.key,
+            caption = ballot_count_caption(option, counts),
+        }
+        if option.tooltip then label.tooltip = option.tooltip end
+    end
+    return flow
+end
+
+local function refresh_ballot_section(player, content, kind)
+    local flow = content[BALLOT_ROOT .. kind]
+    if not flow or not flow.valid then return end
+    local ballot = voting.active(kind)
+    if not ballot then return end
+
+    local timer = flow[BALLOT_TIMER .. kind]
+    if timer and timer.valid then timer.caption = ballot_timer_caption(ballot) end
+
+    local yours = flow[BALLOT_YOURS .. kind]
+    if yours and yours.valid then yours.caption = ballot_yours_caption(player, kind) end
+
+    local tally = flow[BALLOT_TALLY .. kind]
+    if tally and tally.valid then
+        local counts = voting.tally(kind)
+        for _, option in ipairs(ballot.options) do
+            local label = tally[BALLOT_COUNT .. kind .. "_" .. option.key]
+            if label and label.valid then
+                label.caption = ballot_count_caption(option, counts)
             end
         end
     end
-
-    if changed then
-        local items = {}
-        for i, tech_name in ipairs(available) do
-            items[i] = format_tech_name(tech_name)
-        end
-        dropdown.items = items
-        player_data.nauvis_research_options = available
-    end
-
-    local wanted = player_data.nauvis_research_selection or research.get_next_research()
-    local selected_index = 0
-    for i, tech_name in ipairs(available) do
-        if tech_name == wanted then
-            selected_index = i
-            break
-        end
-    end
-    if dropdown.selected_index ~= selected_index then
-        dropdown.selected_index = selected_index
-    end
 end
 
-function M.selected_research_name(player)
-    local player_data = storage.players and storage.players[player.index]
-    if not player_data then return nil end
-    local options = player_data.nauvis_research_options
+--- A ballot opening or closing changes the tab's structure, not just its
+--- numbers, so the cheap refresh has to notice and hand over to a full rebuild.
+local function ballot_signature()
+    local parts = {}
+    for index, kind in ipairs(voting.KINDS) do
+        local ballot = voting.active(kind)
+        parts[index] = tostring(ballot and ballot.start_tick or 0)
+    end
+    return table.concat(parts, ",")
+end
+
+local function selected_ballot_key(player, kind)
     local frame = player.gui.screen.otc_company_frame
     local tabs = frame and frame.otc_company_tabs
     local content = tabs and tabs.otc_company_content_nauvis
-    local row = content and content.otc_company_nauvis_research_row
-    local dropdown = row and row.otc_company_nauvis_research
-    if not dropdown or not options then return nil end
-    local index = dropdown.selected_index
-    if index == 0 then return nil end
-    return options[index]
+    local flow = content and content[BALLOT_ROOT .. kind]
+    if not flow or not flow.valid then return nil end
+    for _, child in ipairs(flow.children) do
+        local dropdown = child[BALLOT_PICK .. kind]
+        if dropdown and dropdown.valid then
+            local ballot = voting.active(kind)
+            local option = ballot and dropdown.selected_index > 0
+                and ballot.options[dropdown.selected_index]
+            return option and option.key or nil
+        end
+    end
+    return nil
 end
 
 local ROW_PREFIX = "otc_company_nauvis_stock_row_"
@@ -349,36 +438,6 @@ local function bill_row_caption(row)
     return { "", item_caption(row.name), string.format(": %d / %d", row.have, row.need) }
 end
 
-local function tally_caption(option, counts)
-    local built = nauvis_expansion.built_count(option.key)
-    local suffix = built > 0 and string.format("   [%d built]", built) or ""
-    return { "", option.label, string.format(": %d votes", counts[option.key] or 0), suffix }
-end
-
-local function your_vote_caption(player)
-    local weight = nauvis_expansion.vote_weight(player.index)
-    if weight <= 0 then
-        return "You hold no shares, so you have no vote."
-    end
-    local vote = nauvis_expansion.get_vote(player.index)
-    local option = vote and nauvis_expansion.get_option(vote)
-    return string.format("Your vote: %s (%d shares)", option and option.label or "none", weight)
-end
-
---- The ballot's own selection, kept per player so the periodic refresh never
---- moves a dropdown out from under someone mid-click. Option captions are
---- static, so unlike the research dropdown the item list is written once.
-local function expansion_selected_key(player)
-    local frame = player.gui.screen.otc_company_frame
-    local tabs = frame and frame.otc_company_tabs
-    local content = tabs and tabs.otc_company_content_nauvis
-    local row = content and content.otc_company_nauvis_expansion_row
-    local dropdown = row and row.otc_company_nauvis_expansion
-    if not dropdown or dropdown.selected_index == 0 then return nil end
-    local option = nauvis_expansion.OPTIONS[dropdown.selected_index]
-    return option and option.key or nil
-end
-
 local function build_expansion_section(player, content)
     content.add { type = "line" }
     content.add { type = "label", caption = "Expansion", style = "bold_label" }
@@ -409,50 +468,7 @@ local function build_expansion_section(player, content)
         }
     end
 
-    local vote_row = content.add {
-        type = "flow", name = "otc_company_nauvis_expansion_row", direction = "horizontal",
-    }
-    vote_row.style.vertical_align = "center"
-    vote_row.add { type = "label", caption = "Vote:" }
-    local items, selected_index = {}, 0
-    local current_vote = nauvis_expansion.get_vote(player.index)
-    for i, option in ipairs(nauvis_expansion.OPTIONS) do
-        items[i] = option.label
-        if option.key == current_vote then selected_index = i end
-    end
-    local dropdown = vote_row.add {
-        type = "drop-down",
-        name = "otc_company_nauvis_expansion",
-        items = items,
-        selected_index = selected_index,
-    }
-    dropdown.style.horizontally_stretchable = true
-    vote_row.add {
-        type = "button",
-        name = "otc_company_nauvis_vote",
-        caption = "Vote",
-        style = "green_button",
-    }
-
-    content.add {
-        type = "label",
-        name = "otc_company_nauvis_expansion_yours",
-        caption = your_vote_caption(player),
-        style = "caption_label",
-    }
-
-    local counts = nauvis_expansion.tally()
-    local tally = content.add {
-        type = "flow", name = "otc_company_nauvis_expansion_tally", direction = "vertical",
-    }
-    for _, option in ipairs(nauvis_expansion.OPTIONS) do
-        local label = tally.add {
-            type = "label",
-            name = "otc_company_nauvis_tally_" .. option.key,
-            caption = tally_caption(option, counts),
-        }
-        label.tooltip = option.tooltip
-    end
+    build_ballot_section(player, content, "expansion")
 end
 
 local function refresh_expansion_section(player, content)
@@ -470,17 +486,60 @@ local function refresh_expansion_section(player, content)
         end
     end
 
-    local yours = content.otc_company_nauvis_expansion_yours
-    if yours and yours.valid then yours.caption = your_vote_caption(player) end
+    refresh_ballot_section(player, content, "expansion")
+end
 
-    local tally = content.otc_company_nauvis_expansion_tally
-    if tally and tally.valid then
-        local counts = nauvis_expansion.tally()
-        for _, option in ipairs(nauvis_expansion.OPTIONS) do
-            local label = tally["otc_company_nauvis_tally_" .. option.key]
-            if label and label.valid then label.caption = tally_caption(option, counts) end
-        end
-    end
+local function mayor_caption()
+    local index = nauvis.get_mayor()
+    local mayor = index and game.get_player(index)
+    return "Mayor: " .. (mayor and mayor.name or "vacant")
+end
+
+local function bonds_caption(player)
+    return string.format("Your bonds: %d of %d issued",
+        nauvis.get_bonds(player.index), nauvis.total_bonds())
+end
+
+local function build_governance_section(player, content)
+    content.add { type = "line" }
+    content.add { type = "label", caption = "Governance", style = "bold_label" }
+    content.add {
+        type = "label",
+        name = "otc_company_nauvis_mayor",
+        caption = mayor_caption(),
+        style = "caption_label",
+    }
+    content.add {
+        type = "label",
+        name = "otc_company_nauvis_bonds",
+        caption = bonds_caption(player),
+    }
+
+    local row = content.add {
+        type = "flow", name = "otc_company_nauvis_gov_row", direction = "horizontal",
+    }
+    row.style.vertical_align = "center"
+    local buy = row.add {
+        type = "button",
+        name = "otc_company_bond_buy",
+        caption = "Buy a bond (₾" .. utils.format_number(nauvis.bond_price(player.index)) .. ")",
+    }
+    buy.tooltip = string.format(
+        "A bond is one vote in every Nauvis ballot. It costs %.0f%% of everything the "
+        .. "world is worth -- every credit in existence plus Nauvis's warehouse -- "
+        .. "multiplied by the bonds you already hold, so each one you buy is dearer "
+        .. "than the last. The purchase burns the money back out of the supply.\n"
+        .. "World value: ₾%s",
+        nauvis.BOND_RATE * 100, utils.format_number(math.floor(nauvis.total_value() + 0.5)))
+    local election = row.add {
+        type = "button",
+        name = "otc_company_election_mayor",
+        caption = "Call a mayoral election",
+        enabled = voting.active("mayor") == nil,
+    }
+    election.tooltip = "Any bondholder can put the mayor's office to a vote."
+
+    build_ballot_section(player, content, "mayor")
 end
 
 local function rebuild_nauvis_tab(player, content)
@@ -511,6 +570,8 @@ local function rebuild_nauvis_tab(player, content)
         style = "caption_label",
     }
 
+    build_governance_section(player, content)
+
     content.add { type = "line" }
     content.add { type = "label", caption = "Research", style = "bold_label" }
     content.add {
@@ -519,29 +580,14 @@ local function rebuild_nauvis_tab(player, content)
         caption = current_research_caption(),
         style = "caption_label",
     }
-
-    local research_row = content.add {
-        type = "flow", name = "otc_company_nauvis_research_row", direction = "horizontal",
-    }
-    research_row.style.vertical_align = "center"
-    research_row.add { type = "label", caption = "Next:" }
-    local research_dropdown = research_row.add {
-        type = "drop-down",
-        name = "otc_company_nauvis_research",
-    }
-    research_dropdown.style.horizontally_stretchable = true
-    populate_research_dropdown(research_dropdown, player_data)
-    research_row.add {
-        type = "button",
-        name = "otc_company_nauvis_apply_research",
-        caption = "Apply",
-        style = "green_button",
-    }
+    build_ballot_section(player, content, "research")
 
     build_expansion_section(player, content)
-    -- The bill of materials is per target, so the periodic refresh has to know
-    -- when to rebuild rows rather than just rewrite captions.
+    -- The bill of materials is per target, and a ballot opening or closing adds
+    -- and removes whole rows, so the periodic refresh has to know when to rebuild
+    -- rather than just rewrite captions.
     player_data.nauvis_expansion_shown = nauvis_expansion.target()
+    player_data.nauvis_ballots_shown = ballot_signature()
 
     content.add { type = "line" }
     content.add { type = "label", caption = "Warehouse stock", style = "bold_label" }
@@ -576,10 +622,6 @@ local function rebuild_nauvis_tab(player, content)
         content.add { type = "label", caption = "None." }
     end
 
-    content.add { type = "line" }
-    content.add { type = "label", caption = "Bonds", style = "bold_label" }
-    local bonds_btn = content.add { type = "button", caption = "Buy bonds", enabled = false }
-    bonds_btn.tooltip = "Coming soon: convert personal credits into Nauvis bonds carrying governance votes."
 end
 
 function M.refresh_nauvis_tab(player)
@@ -623,16 +665,24 @@ function M.refresh_nauvis_stock(player)
         current_research.caption = current_research_caption()
     end
 
-    local research_row = content.otc_company_nauvis_research_row
-    local dropdown = research_row and research_row.otc_company_nauvis_research
-    if dropdown and dropdown.valid and player_data then
-        populate_research_dropdown(dropdown, player_data)
-    end
-
-    if player_data and player_data.nauvis_expansion_shown ~= nauvis_expansion.target() then
+    if player_data and (player_data.nauvis_expansion_shown ~= nauvis_expansion.target()
+        or player_data.nauvis_ballots_shown ~= ballot_signature()) then
         rebuild_nauvis_tab(player, content)
         return
     end
+
+    local mayor = content.otc_company_nauvis_mayor
+    if mayor and mayor.valid then mayor.caption = mayor_caption() end
+    local bonds = content.otc_company_nauvis_bonds
+    if bonds and bonds.valid then bonds.caption = bonds_caption(player) end
+    local gov_row = content.otc_company_nauvis_gov_row
+    local buy = gov_row and gov_row.otc_company_bond_buy
+    if buy and buy.valid then
+        buy.caption = "Buy a bond (₾" .. utils.format_number(nauvis.bond_price(player.index)) .. ")"
+    end
+
+    refresh_ballot_section(player, content, "mayor")
+    refresh_ballot_section(player, content, "research")
     refresh_expansion_section(player, content)
 
     local stock_frame = content.otc_company_nauvis_stock_frame
@@ -844,61 +894,47 @@ function M.handle_leave(player)
     M.rebuild_all(player)
 end
 
-function M.handle_apply_research(player)
-    local tech_name = M.selected_research_name(player)
-    if not tech_name then
-        player.print("Pick a technology for Nauvis to research first.")
+function M.handle_ballot_vote(player, kind)
+    local key = selected_ballot_key(player, kind)
+    if not key then
+        player.print("Pick something on the ballot first.")
         return
     end
 
-    local ok, err = research.set_next_research(tech_name)
+    local ok, err = voting.cast(player.index, kind, key)
     if not ok then
         player.print(err)
         return
     end
 
-    local player_data = storage.players and storage.players[player.index]
-    if player_data then
-        player_data.nauvis_research_selection = nil
-    end
-
-    if research.current_research_name() == tech_name then
-        player.print("Nauvis is now researching " .. tech_name .. ".")
-    else
-        player.print("Nauvis will research " .. tech_name .. " next.")
-    end
-    if not research.can_supply(tech_name) then
-        player.print("Warning: Nauvis cannot produce the science packs that technology needs, "
-            .. "so it will not progress.")
-    end
-    M.refresh_nauvis_stock(player)
-end
-
-function M.handle_vote(player)
-    local key = expansion_selected_key(player)
-    local option = key and nauvis_expansion.get_option(key)
-    if not option then
-        player.print("Pick an expansion to vote for first.")
-        return
-    end
-
-    local ok, err = nauvis_expansion.set_vote(player.index, key)
-    if not ok then
-        player.print(err)
-        return
-    end
-
-    player.print("Voted " .. nauvis_expansion.vote_weight(player.index)
-        .. " shares for " .. option.label .. ".")
+    local ballot = voting.active(kind)
+    player.print({ "", string.format("Cast %d bond(s) for ", voting.weight(player.index)),
+        ballot and voting.option_label(ballot, key) or key, "." })
     M.refresh_nauvis_tab(player)
 end
 
-function M.handle_research_selection(player, element)
-    local player_data = storage.players and storage.players[player.index]
-    if not player_data then return end
-    local options = player_data.nauvis_research_options
-    local index = element.selected_index
-    player_data.nauvis_research_selection = options and index > 0 and options[index] or nil
+function M.handle_call_election(player, kind)
+    if voting.weight(player.index) <= 0 then
+        player.print("You hold no Nauvis bonds, so you cannot call a vote.")
+        return
+    end
+    local ok, err = voting.open(kind, player.name)
+    if not ok then
+        player.print(err)
+        return
+    end
+    M.refresh_nauvis_tab(player)
+end
+
+function M.handle_buy_bond(player)
+    local ok, result = nauvis.buy_bond(player.index)
+    if not ok then
+        player.print(result)
+        return
+    end
+    player.print("Bought a Nauvis bond for ₾" .. utils.format_number(result)
+        .. ". You now hold " .. nauvis.get_bonds(player.index) .. ".")
+    M.rebuild_all(player)
 end
 
 function M.handle_click(player, element_name)
@@ -906,12 +942,18 @@ function M.handle_click(player, element_name)
         M.close(player)
         return
     end
-    if element_name == "otc_company_nauvis_apply_research" then
-        M.handle_apply_research(player)
+    if element_name == "otc_company_bond_buy" then
+        M.handle_buy_bond(player)
         return
     end
-    if element_name == "otc_company_nauvis_vote" then
-        M.handle_vote(player)
+    local election_kind = string.match(element_name, "^otc_company_election_(.+)$")
+    if election_kind then
+        M.handle_call_election(player, election_kind)
+        return
+    end
+    local ballot_kind = string.match(element_name, "^otc_company_ballot_vote_(.+)$")
+    if ballot_kind then
+        M.handle_ballot_vote(player, ballot_kind)
         return
     end
     if element_name == "otc_company_create" then

@@ -1,6 +1,5 @@
 local nauvis = require("scripts.nauvis")
 local stock = require("scripts.stock")
-local company = require("scripts.company")
 local district = require("scripts.district")
 local shape_registry = require("scripts.shape_registry")
 
@@ -72,7 +71,9 @@ local cost_cache = {}
 function M.init()
     district.init()
     local state = storage.nauvis_expansion or {}
-    state.votes = state.votes or {}
+    -- The rolling share-weighted tally this module used to keep is gone; the
+    -- ballot lives in scripts/voting.lua and only ever hands back a target.
+    state.votes = nil
     state.progress = state.progress or {}
     state.built = state.built or {}
     storage.nauvis_expansion = state
@@ -119,57 +120,6 @@ function M.cost(key)
     return list
 end
 
---- A player votes the shares they hold. No shares, no vote -- governance
---- follows ownership, the same way the share market already does.
-function M.vote_weight(player_index)
-    local company_name = company.player_company_name(player_index)
-    local record = company.get(company_name)
-    local holder = record and record.holders and record.holders[player_index]
-    return holder and holder.shares or 0
-end
-
-function M.get_vote(player_index)
-    return state().votes[player_index]
-end
-
-function M.set_vote(player_index, key)
-    if key and not M.get_option(key) then return false, "Unknown expansion." end
-    if M.vote_weight(player_index) <= 0 then
-        return false, "Only shareholders vote on Nauvis expansions. Join or found a company first."
-    end
-    state().votes[player_index] = key
-    return true
-end
-
---- Weight per option key, and the total cast.
-function M.tally()
-    local counts, total = {}, 0
-    for _, option in ipairs(M.OPTIONS) do
-        counts[option.key] = 0
-    end
-    for player_index, key in pairs(state().votes) do
-        if counts[key] then
-            local weight = M.vote_weight(player_index)
-            counts[key] = counts[key] + weight
-            total = total + weight
-        end
-    end
-    return counts, total
-end
-
---- Highest tally wins; ties break towards the earlier option so the result
---- never depends on table iteration order.
-function M.leader()
-    local counts = M.tally()
-    local best, best_weight = nil, 0
-    for _, option in ipairs(M.OPTIONS) do
-        if counts[option.key] > best_weight then
-            best, best_weight = option.key, counts[option.key]
-        end
-    end
-    return best
-end
-
 function M.target()
     return state().target
 end
@@ -193,17 +143,16 @@ function M.built_count(key)
     return state().built[key] or 0
 end
 
---- Follow the vote. Goods already set aside are kept where the new target also
---- needs them and refunded where it does not, so switching a vote costs the
---- market nothing beyond the delay.
-local function retarget()
+--- What the ballot elected. Goods already set aside are kept where the new
+--- target also needs them and refunded where it does not, so a change of
+--- direction costs the market nothing beyond the delay.
+function M.set_target(key)
     local st = state()
-    local leader = M.leader()
-    if leader == st.target then return end
-    st.target = leader
+    if key == st.target then return end
+    st.target = key
 
     local needed = {}
-    for _, entry in ipairs(leader and M.cost(leader) or {}) do
+    for _, entry in ipairs(key and M.cost(key) or {}) do
         needed[entry.name] = entry.count
     end
     for item, held in pairs(st.progress) do
@@ -247,24 +196,25 @@ function M.build(key)
     st.built[key] = (st.built[key] or 0) + 1
     st.progress = {}
     st.target = nil
-    st.votes = {}
     return true
 end
 
---- Called once a second: follow the vote, spend the surplus, build when the
---- bill of materials is covered.
+--- Called once a second: spend the surplus on the elected target, build when
+--- the bill of materials is covered. Returns the option built, if any -- a
+--- cleared target is what tells `voting` to open the next ballot.
 function M.process()
     local st = state()
-    retarget()
     local key = st.target
     local option = key and M.get_option(key)
-    if not option then return end
-    if not accumulate(key) then return end
+    if not option then return nil end
+    if not accumulate(key) then return nil end
 
     if M.build(key) then
         game.print("Nauvis has finished a new " .. option.label
             .. ". The expansion ballot is open again.")
+        return option
     end
+    return nil
 end
 
 --- New forces see the district only if it is charted for them; a company
