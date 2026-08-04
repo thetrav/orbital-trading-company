@@ -85,6 +85,9 @@ function M.setup(specs)
     _G.defines = {
         input_action = { start_research = 1, cancel_research = 2, move_research = 3 },
         direction = M.directions,
+        -- Read at load time by scripts/trading_silo.lua, which a spec pulls in
+        -- transitively the moment it requires anything that reaches platform.lua.
+        wire_connector_id = { circuit_green = 1, circuit_red = 2 },
     }
 
     return nauvis_force

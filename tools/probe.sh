@@ -73,13 +73,21 @@ if ! grep -q "otc_probe.run()" "$CONTROL"; then
     exit 1
 fi
 
+# A crash prints its stack trace on the lines after the "Error while running"
+# line, which the filter throws away. PROBE_VERBOSE=1 keeps everything.
+filter() {
+    if [ -n "${PROBE_VERBOSE:-}" ]; then
+        cat
+    else
+        grep -E "PROBE|Error|error while running" | sed 's/^.*otc_probe\.lua:[0-9]*: //'
+    fi
+}
+
 MAP="$STAGE/map"
 echo "--- create"
-"$FACTORIO_BIN" --create "$MAP" --mod-directory "$STAGE/mods" 2>&1 \
-    | grep -E "PROBE|Error|error while running" | sed 's/^.*otc_probe\.lua:[0-9]*: //'
+"$FACTORIO_BIN" --create "$MAP" --mod-directory "$STAGE/mods" 2>&1 | filter
 
 if [ "$TICKS" -gt 0 ]; then
     echo "--- run $TICKS ticks"
-    "$FACTORIO_BIN" --load-game "$MAP" --mod-directory "$STAGE/mods" --until-tick "$TICKS" 2>&1 \
-        | grep -E "PROBE|Error|error while running" | sed 's/^.*otc_probe\.lua:[0-9]*: //'
+    "$FACTORIO_BIN" --load-game "$MAP" --mod-directory "$STAGE/mods" --until-tick "$TICKS" 2>&1 | filter
 fi

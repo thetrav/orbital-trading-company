@@ -5,6 +5,9 @@
 local district = require("scripts.district")
 local company_facilities = require("scripts.company_facilities")
 local nauvis_expansion = require("scripts.nauvis_expansion")
+local nauvis_siting = require("scripts.nauvis_siting")
+local shape_registry = require("scripts.shape_registry")
+local shape_def = require("scripts.shape_def")
 
 local M = {}
 
@@ -88,7 +91,21 @@ function M.run()
         log("PROBE no station surface")
     end
 
-    nauvis_expansion.build("solar_field")
+    -- An expansion is sited by hand now, so the probe plays mayor and hunts for
+    -- ground west of the district that the rules accept.
+    local field = nauvis_expansion.get_option("solar_field")
+    nauvis_siting.request { shape = field.shape, label = field.label, tag = field.key }
+    local def = shape_registry.get(field.shape)
+    local sited, why = false, "no legal site found"
+    for x = -70, -160, -6 do
+        local origin = { x = x, y = -30 }
+        if nauvis_siting.validate(surface, shape_def.clearance_box(def, origin, 0)) then
+            sited, why = nauvis_siting.place(surface, origin)
+            why = why or ("at " .. origin.x .. "," .. origin.y)
+            break
+        end
+    end
+    log("PROBE solar field sited: " .. tostring(sited) .. " -- " .. why)
     local panels = surface.find_entities_filtered { name = "solar-panel", force = "Nauvis" }
     log("PROBE nauvis solar panels: " .. #panels)
 

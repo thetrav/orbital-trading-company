@@ -1,7 +1,7 @@
-local nauvis = require("scripts.nauvis")
 local stock = require("scripts.stock")
 local district = require("scripts.district")
 local shape_registry = require("scripts.shape_registry")
+local siting = require("scripts.nauvis_siting")
 
 local M = {}
 
@@ -150,6 +150,7 @@ function M.set_target(key)
     local st = state()
     if key == st.target then return end
     st.target = key
+    st.awaiting_site = nil
 
     local needed = {}
     for _, entry in ipairs(key and M.cost(key) or {}) do
@@ -185,36 +186,52 @@ local function accumulate(key)
     return complete
 end
 
-function M.build(key)
-    local option = M.get_option(key)
-    local surface = game.surfaces["nauvis"]
-    if not option or not surface then return false end
-
-    district.build(surface, option.shape, nauvis.FORCE_NAME)
-
+--- Book a finished build. The world was built by `nauvis_siting` the moment the
+--- mayor clicked; this is only the accounting, which clears the target and so
+--- reopens the ballot.
+function M.finish(key)
     local st = state()
     st.built[key] = (st.built[key] or 0) + 1
     st.progress = {}
     st.target = nil
+    st.awaiting_site = nil
     return true
 end
 
---- Called once a second: spend the surplus on the elected target, build when
---- the bill of materials is covered. Returns the option built, if any -- a
---- cleared target is what tells `voting` to open the next ballot.
+--- Called once a second: spend the surplus on the elected target, then ask for
+--- a site once the bill of materials is covered. Returns the option built, if
+--- any -- a cleared target is what tells `voting` to open the next ballot.
 function M.process()
+    local done = siting.take_completed()
+    if done and done.tag then
+        local option = M.get_option(done.tag)
+        if option then
+            M.finish(done.tag)
+            game.print("Nauvis has finished a new " .. option.label
+                .. ". The expansion ballot is open again.")
+            return option
+        end
+    end
+
     local st = state()
     local key = st.target
     local option = key and M.get_option(key)
     if not option then return nil end
+    if st.awaiting_site then return nil end
     if not accumulate(key) then return nil end
 
-    if M.build(key) then
-        game.print("Nauvis has finished a new " .. option.label
-            .. ". The expansion ballot is open again.")
-        return option
+    -- Where it goes is the mayor's call, so the goods sit set aside until one is
+    -- pointed at a piece of ground.
+    if siting.request { shape = option.shape, label = option.label, tag = key } then
+        st.awaiting_site = true
     end
     return nil
+end
+
+--- True while the goods are paid for and Nauvis is only waiting to be told
+--- where to put them.
+function M.awaiting_site()
+    return state().awaiting_site == true and siting.pending() ~= nil
 end
 
 --- New forces see the district only if it is charted for them; a company

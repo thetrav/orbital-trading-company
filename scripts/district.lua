@@ -257,7 +257,9 @@ local function lay_path(surface, segments)
     if #tiles > 0 then surface.set_tiles(tiles) end
 end
 
-local function ensure_pole(surface, x, y)
+--- Exported because a mayor-sited building is off the grid entirely and still
+--- has to run its own corners into the same deduped pole list.
+function M.ensure_pole(surface, x, y)
     local poles = state().poles
     local key = x .. "," .. y
     if poles[key] then return end
@@ -288,7 +290,7 @@ local function connect(surface, centre)
     -- so these four stand squarely in the gutter strips laid above.
     for _, x in ipairs { left + GUTTER - 1, right } do
         for _, y in ipairs { top + GUTTER - 1, bottom } do
-            ensure_pole(surface, x, y)
+            M.ensure_pole(surface, x, y)
         end
     end
 end

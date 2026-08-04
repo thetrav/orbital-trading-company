@@ -6,6 +6,7 @@ local utils = require("scripts.utils")
 local item_filter = require("scripts.item_filter")
 local research = require("scripts.research")
 local nauvis_expansion = require("scripts.nauvis_expansion")
+local nauvis_siting = require("scripts.nauvis_siting")
 local stock = require("scripts.stock")
 local voting = require("scripts.voting")
 
@@ -438,6 +439,31 @@ local function bill_row_caption(row)
     return { "", item_caption(row.name), string.format(": %d / %d", row.have, row.need) }
 end
 
+--- The site request, when the goods are paid for and Nauvis is only waiting to
+--- be told where to put them. Structural, so the periodic refresh has to notice
+--- it appearing and rebuild rather than rewrite captions.
+local function build_siting_section(player, content)
+    local request = nauvis_siting.pending()
+    if not request then return end
+
+    content.add {
+        type = "label",
+        caption = { "", "Materials ready: ", request.label, " -- waiting for a site." },
+        style = "caption_label",
+    }
+    local denied = nauvis_siting.reason_denied(player)
+    local button = content.add {
+        type = "button",
+        name = "otc_company_expansion_site",
+        caption = "Choose a site",
+        enabled = denied == nil,
+    }
+    button.tooltip = denied or (
+        "Puts the building's footprint in your cursor. Left-click dry, empty ground within "
+        .. "reach of Nauvis's power grid -- trees, rocks and cliffs are cleared for you, "
+        .. "water, enemies and anything already built are not.")
+end
+
 local function build_expansion_section(player, content)
     content.add { type = "line" }
     content.add { type = "label", caption = "Expansion", style = "bold_label" }
@@ -468,6 +494,7 @@ local function build_expansion_section(player, content)
         }
     end
 
+    build_siting_section(player, content)
     build_ballot_section(player, content, "expansion")
 end
 
@@ -487,6 +514,13 @@ local function refresh_expansion_section(player, content)
     end
 
     refresh_ballot_section(player, content, "expansion")
+end
+
+--- Whole rows come and go when the target changes or a site request opens, so
+--- the periodic refresh compares this and rebuilds when it moves.
+local function expansion_signature()
+    local request = nauvis_siting.pending()
+    return tostring(nauvis_expansion.target()) .. "|" .. tostring(request and request.shape)
 end
 
 local function mayor_caption()
@@ -586,7 +620,7 @@ local function rebuild_nauvis_tab(player, content)
     -- The bill of materials is per target, and a ballot opening or closing adds
     -- and removes whole rows, so the periodic refresh has to know when to rebuild
     -- rather than just rewrite captions.
-    player_data.nauvis_expansion_shown = nauvis_expansion.target()
+    player_data.nauvis_expansion_shown = expansion_signature()
     player_data.nauvis_ballots_shown = ballot_signature()
 
     content.add { type = "line" }
@@ -665,7 +699,7 @@ function M.refresh_nauvis_stock(player)
         current_research.caption = current_research_caption()
     end
 
-    if player_data and (player_data.nauvis_expansion_shown ~= nauvis_expansion.target()
+    if player_data and (player_data.nauvis_expansion_shown ~= expansion_signature()
         or player_data.nauvis_ballots_shown ~= ballot_signature()) then
         rebuild_nauvis_tab(player, content)
         return
@@ -940,6 +974,17 @@ end
 function M.handle_click(player, element_name)
     if element_name == "otc_company_close" then
         M.close(player)
+        return
+    end
+    if element_name == "otc_company_expansion_site" then
+        -- The tool goes in the cursor, so the window it was asked for from has
+        -- to get out of the way.
+        local ok, reason = nauvis_siting.begin(player)
+        if ok then
+            M.close(player)
+        elseif reason then
+            player.print(reason)
+        end
         return
     end
     if element_name == "otc_company_bond_buy" then

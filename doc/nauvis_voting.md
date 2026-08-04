@@ -101,10 +101,12 @@ they are the busy flags.
 
 ## Open questions
 
-- **The mayor has no powers.** The office is elected and displayed; nothing reads
-  `storage.nauvis.mayor`. `doc/design-thinking.md` wants the mayor to place expansions by
-  hand instead of the district packer choosing — that is the obvious first power, and it
-  is the reason the role exists at all.
+- **The mayor's one power is siting.** A voted expansion whose bill of materials is covered
+  waits in `scripts/nauvis_siting.lua` until the mayor picks the ground for it, from the
+  Nauvis tab of a company monitor. With the office vacant anyone may site, because no
+  ballot opens a mayoral election by itself — an election that never happens must not
+  block the state's building programme. What else the office should be able to do (set a
+  reserve, veto a ballot, spend the treasury) is still open.
 - **Bond concentration is slowed, not solved.** Quadratic pricing makes a majority
   expensive rather than impossible, and nothing caps a holding or dilutes one — a player
   who keeps buying through a long, profitable game still gets there eventually. `BOND_RATE`

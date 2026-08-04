@@ -18,6 +18,7 @@ local trading_gui = require("scripts.trading_gui")
 local stock = require("scripts.stock")
 local nauvis_industry = require("scripts.nauvis_industry")
 local nauvis_expansion = require("scripts.nauvis_expansion")
+local nauvis_siting = require("scripts.nauvis_siting")
 local company_facilities = require("scripts.company_facilities")
 local district = require("scripts.district")
 local research = require("scripts.research")
@@ -176,6 +177,7 @@ script.on_init(function()
     shape_capture.init()
     shape_config.init()
     shape_place.init()
+    nauvis_siting.init()
     nauvis_guard.init()
     ensure_company_setup()
 
@@ -280,7 +282,10 @@ end)
 
 script.on_event(defines.events.on_player_cursor_stack_changed, function(event)
     local player = game.get_player(event.player_index)
-    if player then shape_place.handle_cursor_changed(player) end
+    if player then
+        nauvis_siting.handle_cursor_changed(player)
+        shape_place.handle_cursor_changed(player)
+    end
 end)
 
 script.on_event(defines.events.on_player_display_scale_changed, function(event)
@@ -323,6 +328,7 @@ script.on_configuration_changed(function()
     shape_capture.init()
     shape_config.init()
     shape_place.init()
+    nauvis_siting.init()
     nauvis_guard.init()
     ensure_company_setup()
     nauvis_industry.ensure_built()
@@ -365,6 +371,11 @@ script.on_event(defines.events.on_built_entity, function(event)
     -- 2.0 renamed this field; `created_entity` reads nil and silently disables
     -- everything below it.
     local entity = event.entity
+    -- The siting tool borrows the dev placer's marker item, so it gets first
+    -- refusal on a marker before the placer treats it as a free stamp.
+    if entity and entity.valid and nauvis_siting.on_marker_built(entity, event.player_index) then
+        return
+    end
     if entity and entity.valid and shape_place.on_marker_built(entity, event.player_index) then
         return
     end

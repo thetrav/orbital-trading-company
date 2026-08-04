@@ -3,6 +3,9 @@
 -- under everything, and does the substation spine put the whole district on one
 -- electric network so a science factory can run off a solar field.
 local nauvis_expansion = require("scripts.nauvis_expansion")
+local siting = require("scripts.nauvis_siting")
+local shape_registry = require("scripts.shape_registry")
+local shape_def = require("scripts.shape_def")
 
 local M = {}
 
@@ -29,15 +32,40 @@ local function describe(surface, key)
     log("PROBE after " .. key .. ": substations=" .. #built .. " networks=" .. table.concat(ids, " "))
 end
 
+--- Play mayor: walk west along the district's row until the siting rules accept
+--- a footprint. A fixed origin is no good now that the world under it is real
+--- terrain with lakes and the district's own ore in it.
+local function find_site(surface, shape)
+    local def = shape_registry.get(shape)
+    for x = -70, -220, -6 do
+        for _, y in ipairs { -30, -8, -52 } do
+            local origin = { x = x, y = y }
+            if siting.validate(surface, shape_def.clearance_box(def, origin, 0)) then
+                return origin
+            end
+        end
+    end
+    return nil
+end
+
 function M.run()
     report_costs()
 
     local surface = game.surfaces["nauvis"]
-    for _, key in ipairs { "solar_field", "science_factory", "iron_mine" } do
+    -- Expansions are sited by hand now, so the probe plays mayor: ask for a
+    -- site, then hunt for ground west of the compound the rules will accept.
+    for _, key in ipairs { "solar_field", "automation_science", "iron_mine" } do
         surface.request_to_generate_chunks({ x = -160, y = -40 }, 6)
         surface.force_generate_chunk_requests()
-        local ok = nauvis_expansion.build(key)
-        log("PROBE build " .. key .. ": " .. tostring(ok))
+        local option = nauvis_expansion.get_option(key)
+        siting.request { shape = option.shape, label = option.label, tag = key }
+        local origin = find_site(surface, option.shape)
+        local ok, reason = origin and siting.place(surface, origin)
+        log(string.format("PROBE site %s at %s: %s%s", key,
+            origin and (origin.x .. "," .. origin.y) or "nowhere legal",
+            tostring(ok), reason and (" -- " .. reason) or ""))
+        nauvis_expansion.set_target(key)
+        nauvis_expansion.process()
         describe(surface, key)
     end
 
