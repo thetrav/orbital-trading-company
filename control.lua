@@ -312,6 +312,7 @@ script.on_nth_tick(60, function()
     trading_gui.refresh()
     research.start_pending_research()
     nauvis_expansion.process()
+    company_facilities.process()
     -- After the expansion pass, so a build that clears the target opens the next
     -- ballot on the same tick rather than a second later.
     voting.process()

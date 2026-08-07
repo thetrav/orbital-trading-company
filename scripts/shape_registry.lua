@@ -13,6 +13,7 @@ M.defs = {
     orbital_station = require("scripts.shapes.orbital_station"),
     station_interior = require("scripts.shapes.station_interior"),
     nauvis_starting_room = require("scripts.shapes.nauvis_starting_room"),
+    nauvis_start = require("scripts.shapes.nauvis_start"),
     nauvis_lab = require("scripts.shapes.nauvis_lab"),
     nauvis_mine_iron = require("scripts.shapes.nauvis_mine_iron"),
     nauvis_mine_copper = require("scripts.shapes.nauvis_mine_copper"),

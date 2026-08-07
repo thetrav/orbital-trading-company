@@ -39,20 +39,13 @@ local function make_surface(entities, water_tiles)
     }
 end
 
--- Wire reach is a getter on the real prototype, not a field, because 2.0 makes
--- it quality-dependent.
-local function pole(x, y, reach)
-    local distance = reach or 30
+local function pole(x, y)
     return {
         valid = true,
         name = "big-electric-pole",
         type = "electric-pole",
         force = "Nauvis",
         position = { x = x, y = y },
-        prototype = {
-            get_max_wire_distance = function() return distance end,
-            set_reach = function(value) distance = value end,
-        },
     }
 end
 
@@ -63,9 +56,6 @@ describe("nauvis_siting.validate", function()
 
     before_each(function()
         mock.setup {}
-        _G.prototypes.entity = {
-            ["big-electric-pole"] = { get_max_wire_distance = function() return 30 end },
-        }
         package.loaded["scripts.nauvis_siting"] = nil
         siting = require("scripts.nauvis_siting")
         siting.init()
@@ -75,13 +65,26 @@ describe("nauvis_siting.validate", function()
         mock.teardown()
     end)
 
-    it("accepts empty ground in reach of the grid", function()
-        local surface = make_surface { pole(-10, -10) }
+    it("accepts empty ground", function()
+        assert.is_true(siting.validate(make_surface {}, BOX))
+    end)
+
+    it("accepts ground nowhere near anything already built", function()
+        -- Distance from the rest of the world used to be a rule, and the grid it
+        -- produced is exactly what it was removed for.
+        assert.is_true(siting.validate(make_surface { pole(-600, -600) }, BOX))
+    end)
+
+    it("ignores enemies, which no longer bear on a site", function()
+        local surface = make_surface {
+            { valid = true, name = "biter-spawner", type = "unit-spawner", force = "enemy",
+                position = { x = 14, y = 5 } },
+        }
         assert.is_true(siting.validate(surface, BOX))
     end)
 
     it("rejects a site with water in the footprint", function()
-        local surface = make_surface({ pole(-10, -10) }, { { 4, 4 } })
+        local surface = make_surface({}, { { 4, 4 } })
         local ok, reason = siting.validate(surface, BOX)
         assert.is_false(ok)
         assert.is_truthy(string.find(reason, "water"))
@@ -89,7 +92,6 @@ describe("nauvis_siting.validate", function()
 
     it("clears scenery rather than refusing it", function()
         local surface = make_surface {
-            pole(-10, -10),
             { valid = true, name = "tree-01", type = "tree", force = "neutral", position = { x = 3, y = 3 } },
             { valid = true, name = "rock-huge", type = "simple-entity", force = "neutral", position = { x = 5, y = 2 } },
         }
@@ -98,7 +100,6 @@ describe("nauvis_siting.validate", function()
 
     it("rejects a building in the footprint", function()
         local surface = make_surface {
-            pole(-10, -10),
             { valid = true, name = "assembling-machine-1", type = "assembling-machine",
                 force = "Nauvis", position = { x = 5, y = 5 } },
         }
@@ -109,7 +110,6 @@ describe("nauvis_siting.validate", function()
 
     it("rejects a player standing on the site", function()
         local surface = make_surface {
-            pole(-10, -10),
             { valid = true, name = "character", type = "character", force = "player",
                 position = { x = 2, y = 2 } },
         }
@@ -117,49 +117,113 @@ describe("nauvis_siting.validate", function()
         assert.is_false(ok)
         assert.is_truthy(string.find(reason, "standing"))
     end)
+end)
 
-    it("rejects a site near enemies even when the footprint itself is clear", function()
-        local surface = make_surface {
-            pole(-10, -10),
-            { valid = true, name = "biter-spawner", type = "unit-spawner", force = "enemy",
-                position = { x = 14, y = 5 } },
+-- The state and each company queue independently, so a request waiting on a
+-- mayor must not block a company placing its own launch bay, and neither may
+-- read the other's completion.
+describe("nauvis_siting request clients", function()
+    local siting
+
+    local function player(index, force_name)
+        return { index = index, force = { name = force_name }, surface = { name = "nauvis" } }
+    end
+
+    before_each(function()
+        mock.setup {}
+        _G.game.print = function() end
+        _G.game.forces.Acme = { name = "Acme", print = function() end }
+        _G.game.get_player = function(index) return { index = index, name = "P" .. index } end
+        _G.storage.nauvis = { mayor = nil, bonds = {}, holdings = {} }
+        package.loaded["scripts.nauvis_siting"] = nil
+        siting = require("scripts.nauvis_siting")
+        siting.init()
+    end)
+
+    after_each(function()
+        mock.teardown()
+    end)
+
+    local function company_request()
+        return siting.request {
+            client = "company:Acme", shape = "orbital_station", label = "launch bay",
+            force_name = "Acme", owned_by_force = true, sited_by = "Acme", border = "stone-path",
         }
-        local ok, reason = siting.validate(surface, BOX)
-        assert.is_false(ok)
-        assert.is_truthy(string.find(reason, "enemy"))
+    end
+
+    it("keeps one request per client", function()
+        assert.is_true(siting.request { shape = "solar_field", label = "Solar field", tag = "solar_field" })
+        assert.is_true(company_request())
+        assert.are.equal("solar_field", siting.pending().shape)
+        assert.are.equal("orbital_station", siting.pending("company:Acme").shape)
+        assert.are.equal(2, #siting.list())
     end)
 
-    it("rejects a site out of the power grid's reach", function()
-        local surface = make_surface { pole(-60, -60) }
-        local ok, reason = siting.validate(surface, BOX)
-        assert.is_false(ok)
-        assert.is_truthy(string.find(reason, "power grid"))
+    it("refuses a second request for the same client", function()
+        assert.is_true(siting.request { shape = "solar_field", label = "Solar field" })
+        assert.is_false(siting.request { shape = "nauvis_lab", label = "Lab district" })
+        assert.are.equal("solar_field", siting.pending().shape)
     end)
 
-    it("measures reach against the shorter of the two poles", function()
-        -- A substation 25 tiles out is inside a big pole's 30 but outside its
-        -- own 18, so it cannot be the link.
-        local substation = pole(-24, -1, 18)
-        substation.name = "substation"
-        assert.is_false(siting.validate(make_surface { substation }, BOX))
-        substation.prototype.set_reach(30)
-        assert.is_true(siting.validate(make_surface { substation }, BOX))
+    it("survives repeated state reads", function()
+        -- `completed` is an empty table, not nil, so a migration keyed on the
+        -- legacy fields being absent would wipe the requests on the next call.
+        assert.is_true(company_request())
+        siting.init()
+        siting.pending()
+        assert.is_not_nil(siting.pending("company:Acme"))
+    end)
+
+    it("migrates a save that carried a single request", function()
+        _G.storage.nauvis_siting = { request = { shape = "solar_field", label = "Solar field" }, holder = 7 }
+        package.loaded["scripts.nauvis_siting"] = nil
+        local migrated = require("scripts.nauvis_siting")
+        assert.are.equal("solar_field", migrated.pending().shape)
+        assert.are.equal("nauvis", migrated.pending().client)
+    end)
+
+    it("lets the owning force site its own build, and nobody else", function()
+        company_request()
+        local request = siting.pending("company:Acme")
+        assert.is_true(siting.can_site(player(1, "Acme"), request))
+        assert.is_false(siting.can_site(player(2, "Other"), request))
+    end)
+
+    it("leaves a company build alone when a mayor is in office", function()
+        company_request()
+        _G.storage.nauvis.mayor = 9
+        assert.is_true(siting.can_site(player(1, "Acme"), siting.pending("company:Acme")))
+    end)
+
+    it("still reserves the state's own works for the mayor", function()
+        siting.request { shape = "solar_field", label = "Solar field" }
+        _G.storage.nauvis.mayor = 9
+        assert.is_true(siting.can_site(player(9, "Acme"), siting.pending()))
+        assert.is_false(siting.can_site(player(1, "Acme"), siting.pending()))
+        assert.is_nil(siting.reason_denied(player(9, "Acme")))
+    end)
+
+    it("hands each completion only to the client that asked", function()
+        siting.request { shape = "solar_field", label = "Solar field", tag = "solar_field" }
+        company_request()
+        storage.nauvis_siting.completed["company:Acme"] = { tag = "launch bay" }
+        assert.is_nil(siting.take_completed())
+        assert.are.equal("launch bay", siting.take_completed("company:Acme").tag)
+        assert.is_nil(siting.take_completed("company:Acme"))
     end)
 end)
 
-describe("nauvis_siting.pole_positions", function()
-    it("puts a 2x2 pole clear of the footprint on every corner", function()
+-- Siting used to lay a big pole on each corner of every footprint and refuse any
+-- site out of wire reach of an existing one. Both are gone: the poles read as a
+-- grid stamped over the landscape, and the reach rule is what forced every new
+-- build to huddle against the last.
+describe("nauvis_siting power", function()
+    it("has no pole placement left to configure", function()
         mock.setup {}
         package.loaded["scripts.nauvis_siting"] = nil
         local siting = require("scripts.nauvis_siting")
-        local positions = siting.pole_positions(BOX)
-        assert.are.equal(4, #positions)
-        for _, position in ipairs(positions) do
-            -- Occupied tiles are (x-1, x) and (y-1, y): none may fall inside.
-            local inside_x = position.x >= BOX[1][1] and position.x - 1 <= BOX[2][1]
-            local inside_y = position.y >= BOX[1][2] and position.y - 1 <= BOX[2][2]
-            assert.is_false(inside_x and inside_y)
-        end
+        assert.is_nil(siting.pole_positions)
+        assert.is_nil(siting.grid_link)
         mock.teardown()
     end)
 end)

@@ -1,19 +1,46 @@
--- The enlarged orbital station and the launch bay that turns to face spawn.
--- Does every wall get an airlock that expands outwards, and does each company's
--- bay open on the side its players walk in from?
+-- The enlarged orbital station and the launch bay a company sites for itself.
+-- Does every wall get an airlock that expands outwards, and does a bay placed
+-- on ground the company picked still come out whole -- one force, one gate, the
+-- teleporter next to it?
 local company_facilities = require("scripts.company_facilities")
+local nauvis_siting = require("scripts.nauvis_siting")
+local shape_registry = require("scripts.shape_registry")
+local shape_def = require("scripts.shape_def")
 local platform = require("scripts.platform")
 
 local M = {}
 
+--- Play the company: take the pending request and hunt outwards from the
+--- compound for ground the siting rules accept.
+local function site_bay(surface, force_name)
+    local client = company_facilities.client(force_name)
+    local request = nauvis_siting.pending(client)
+    if not request then return nil end
+    local def = shape_registry.get(request.shape)
+    for d = 10, 90, 2 do
+        for _, origin in ipairs { { x = -d, y = d }, { x = d, y = d },
+            { x = -d, y = -d }, { x = d, y = -d } } do
+            if nauvis_siting.validate(surface, shape_def.clearance_box(def, origin, 0)) then
+                if nauvis_siting.place(surface, origin, client) then
+                    company_facilities.process()
+                    return (company_facilities.get(force_name) or {})[1]
+                end
+            end
+        end
+    end
+    return nil
+end
+
 function M.run()
     local surface = game.surfaces["nauvis"]
+    surface.request_to_generate_chunks({ 0, 0 }, 8)
+    surface.force_generate_chunk_requests()
 
     for i = 1, 5 do
         local name = "ProbeCo" .. i
         game.create_force(name)
-        local sites = company_facilities.ensure_for(name)
-        local bay = sites and sites[1]
+        company_facilities.ensure_for(name)
+        local bay = site_bay(surface, name)
         if not bay then
             log("PROBE " .. name .. " got no bay")
             goto continue
@@ -26,13 +53,8 @@ function M.run()
         }[1]
         local dx = gate and (gate.position.x - bay.x) or 0
         local dy = gate and (gate.position.y - bay.y) or 0
-        local side = (math.abs(dx) > math.abs(dy))
-            and (dx > 0 and "+x" or "-x")
-            or (dy > 0 and "+y" or "-y")
-        log(string.format("PROBE bay %s at %d,%d gate offset %.0f,%.0f side %s (spawn is %s)",
-            name, bay.x, bay.y, dx, dy, side,
-            (math.abs(bay.x) > math.abs(bay.y)) and (bay.x > 0 and "-x" or "+x")
-                or (bay.y > 0 and "-y" or "+y")))
+        log(string.format("PROBE bay %s at %d,%d gate offset %.0f,%.0f border %s",
+            name, bay.x, bay.y, dx, dy, surface.get_tile(bay.x - 9, bay.y - 9).name))
 
         -- The gate is only worth facing spawn if what a player walks in for is
         -- on the same side: the teleporter should sit just inside it, and the

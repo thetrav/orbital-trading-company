@@ -7,6 +7,7 @@ local item_filter = require("scripts.item_filter")
 local research = require("scripts.research")
 local nauvis_expansion = require("scripts.nauvis_expansion")
 local nauvis_siting = require("scripts.nauvis_siting")
+local company_facilities = require("scripts.company_facilities")
 local stock = require("scripts.stock")
 local voting = require("scripts.voting")
 
@@ -115,6 +116,34 @@ local function rebuild_companies_tab(player, content)
     end
 end
 
+--- A facility the company has been given but not yet put anywhere. It is held to
+--- the same siting rules as a public work, so the button says the same things --
+--- only the force allowed to click it differs.
+local function build_facility_section(player, content, force_name)
+    local client = company_facilities.client(force_name)
+    local request = nauvis_siting.pending(client)
+    if not request then return end
+
+    content.add { type = "line" }
+    content.add { type = "label", caption = "Facilities", style = "bold_label" }
+    content.add {
+        type = "label",
+        caption = { "", "Ready to build: ", request.label, " -- waiting for a site." },
+        style = "caption_label",
+    }
+    local denied = nauvis_siting.reason_denied(player, client)
+    local button = content.add {
+        type = "button",
+        name = "otc_company_facility_site",
+        caption = "Choose a site",
+        enabled = denied == nil,
+    }
+    button.tooltip = denied or (
+        "Puts the building's footprint in your cursor. Left-click anywhere on dry, empty "
+        .. "ground -- trees, rocks and cliffs are cleared for you, water and anything "
+        .. "already built are not.")
+end
+
 local function rebuild_company_tab(player, content)
     for _, child in ipairs(content.children) do child.destroy() end
 
@@ -143,6 +172,8 @@ local function rebuild_company_tab(player, content)
         local badge = content.add { type = "label", caption = "IN RECEIVERSHIP" }
         badge.style.font_color = { r = 0.9, g = 0.2, b = 0.2 }
     end
+
+    build_facility_section(player, content, name)
 
     content.add { type = "line" }
 
@@ -459,9 +490,9 @@ local function build_siting_section(player, content)
         enabled = denied == nil,
     }
     button.tooltip = denied or (
-        "Puts the building's footprint in your cursor. Left-click dry, empty ground within "
-        .. "reach of Nauvis's power grid -- trees, rocks and cliffs are cleared for you, "
-        .. "water, enemies and anything already built are not.")
+        "Puts the building's footprint in your cursor. Left-click anywhere on dry, empty "
+        .. "ground -- trees, rocks and cliffs are cleared for you, water and anything "
+        .. "already built are not.")
 end
 
 local function build_expansion_section(player, content)
@@ -980,6 +1011,17 @@ function M.handle_click(player, element_name)
         -- The tool goes in the cursor, so the window it was asked for from has
         -- to get out of the way.
         local ok, reason = nauvis_siting.begin(player)
+        if ok then
+            M.close(player)
+        elseif reason then
+            player.print(reason)
+        end
+        return
+    end
+    if element_name == "otc_company_facility_site" then
+        local player_data = storage.players[player.index]
+        local name = player_data and player_data.company
+        local ok, reason = nauvis_siting.begin(player, name and company_facilities.client(name))
         if ok then
             M.close(player)
         elseif reason then

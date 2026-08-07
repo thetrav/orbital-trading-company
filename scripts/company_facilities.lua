@@ -1,4 +1,4 @@
-local district = require("scripts.district")
+local siting = require("scripts.nauvis_siting")
 
 local M = {}
 
@@ -8,50 +8,89 @@ local M = {}
 -- -- everything it actually chooses is built in space, off its own station's
 -- airlocks.
 --
--- It goes in the company zone, which grows south from the compound: the state's
--- own works march north, so the two never queue for the same ground and a
--- player's rocket stays on the near side of the district.
+-- It is given, but not sited: the company picks its own ground under exactly
+-- the rules a public work is held to (dry, empty, within reach of the grid),
+-- via `nauvis_siting`. One request is open at a time, so the queue drains a
+-- facility per placement.
 local FACILITIES = {
     { shape = "orbital_station", label = "launch bay" },
 }
 
--- Where the starting room stands, and so where the players walking to a launch
--- bay are coming from. Its airlock turns to face this.
-local SPAWN = { x = 0, y = 0 }
+-- A company's ground is paved so it reads as the company's rather than as
+-- whatever grass the launch bay landed on.
+local BORDER_TILE = "stone-path"
+
+--- Each company has its own siting queue, so a request waiting on one company
+--- never blocks Nauvis's own works or another company's.
+function M.client(force_name)
+    return "company:" .. force_name
+end
 
 function M.init()
-    storage.company_facilities = storage.company_facilities or {}
-    return storage.company_facilities
+    local all = storage.company_facilities or {}
+    -- Facilities used to be packed into the district the moment a company was
+    -- founded, so the entry was just the list of what went up.
+    for force_name, record in pairs(all) do
+        if not record.sites then
+            all[force_name] = { queue = {}, sites = record }
+        end
+    end
+    storage.company_facilities = all
+    return all
 end
 
 function M.get(force_name)
-    return M.init()[force_name]
+    local record = M.init()[force_name]
+    return record and record.sites
 end
 
---- Claim a district slot per facility and build it owned by the company.
---- Idempotent, so a migration can call it for companies founded before this
---- existed.
+local function request_next(force_name, record)
+    local facility = record.queue[1]
+    if not facility then return end
+    if siting.pending(M.client(force_name)) then return end
+    if siting.request {
+        client = M.client(force_name),
+        shape = facility.shape,
+        label = facility.label,
+        force_name = force_name,
+        owned_by_force = true,
+        sited_by = force_name,
+        border = BORDER_TILE,
+    } then
+        table.remove(record.queue, 1)
+    end
+end
+
+--- Queue a new company's facilities and open the first site request. Idempotent,
+--- so a migration can call it for companies founded before this existed.
 function M.ensure_for(force_name)
     local all = M.init()
-    if all[force_name] then return all[force_name] end
+    local record = all[force_name]
+    if record then return record.sites end
 
-    local surface = game.surfaces["nauvis"]
-    if not surface then return nil end
+    record = { queue = {}, sites = {} }
+    for i, facility in ipairs(FACILITIES) do record.queue[i] = facility end
+    all[force_name] = record
+    request_next(force_name, record)
+    return record.sites
+end
 
-    local sites = {}
-    for _, facility in ipairs(FACILITIES) do
-        local _, _, centre = district.build(surface, facility.shape, force_name,
-            { owned_by_force = true, zone = "company", face_towards = SPAWN })
-        sites[#sites + 1] = {
-            shape = facility.shape,
-            label = facility.label,
-            x = centre and centre.x or 0,
-            y = centre and centre.y or 0,
-        }
+--- Called once a second: book whatever a company just sited and put the next
+--- facility in the queue up for placement.
+function M.process()
+    for force_name, record in pairs(M.init()) do
+        local done = siting.take_completed(M.client(force_name))
+        if done then
+            record.sites[#record.sites + 1] = {
+                shape = done.shape, label = done.label, x = done.x, y = done.y,
+            }
+            local force = game.forces[force_name]
+            if force then
+                force.print(string.format("Your %s is built at %d,%d.", done.label, done.x, done.y))
+            end
+        end
+        request_next(force_name, record)
     end
-
-    all[force_name] = sites
-    return sites
 end
 
 return M
