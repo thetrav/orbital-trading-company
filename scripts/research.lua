@@ -42,12 +42,16 @@ function M.lock_all_players()
     end
 end
 
+--- Science packs, and only science packs. The monopoly is about who may *run*
+--- research, not who may build the box: a lab a company puts down is destroyed
+--- and refunded by `M.block_lab` the moment it appears, so letting companies
+--- craft and sell labs costs the state nothing and is the only way Nauvis can
+--- ever buy a lab district -- it cannot make one itself, and no other force was
+--- allowed to.
 function M.is_banned_item(item_name)
     local prototype = prototypes.item[item_name]
     if not prototype then return false end
-    if prototype.type == "tool" then return true end
-    local place_result = prototype.place_result
-    return place_result ~= nil and place_result.type == "lab"
+    return prototype.type == "tool"
 end
 
 local function is_banned_recipe(recipe)
@@ -65,8 +69,16 @@ function M.is_restricted_force(force)
     return not NON_COMPANY_FORCES[force.name]
 end
 
+--- Ban only ever *disables*, so a recipe that stops being banned stays off for
+--- the rest of the save unless something puts it back. `reset_recipes` is that
+--- something: it restores every recipe to what the force's researched
+--- technologies say it should be, and the bans go on top. Without it, a save
+--- written while labs were banned would keep the lab recipe disabled forever --
+--- `sync_force` cannot re-run a technology's unlock effects, because it skips
+--- any technology the force already has researched.
 function M.apply_bans(force)
     if not M.is_restricted_force(force) then return end
+    force.reset_recipes()
     for _, recipe in pairs(force.recipes) do
         if recipe.enabled and is_banned_recipe(recipe) then
             recipe.enabled = false

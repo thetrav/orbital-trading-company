@@ -27,6 +27,14 @@ return {
             { type = "impact", percent = 60 },
         },
         inventory_size = 100,
+        -- Slot filters are how a buy order says *what* and *how much*: a filtered
+        -- slot is a reservation, and one slot holds one stack. The limiter bar
+        -- comes with it and is what blocks slots off entirely.
+        --
+        -- This forecloses `with_custom_stack_size`: `inventory_type` is a single
+        -- value, so a container can have filters+bar or a custom stack size, not
+        -- both. Reservation granularity is therefore one vanilla stack.
+        inventory_type = "with_filters_and_bar",
         open_sound = { filename = "__base__/sound/metallic-chest-open.ogg", volume = 0.65 },
         close_sound = { filename = "__base__/sound/metallic-chest-close.ogg", volume = 0.7 },
         picture = {

@@ -3,7 +3,10 @@ local item_filter = require("scripts.item_filter")
 
 local M = {}
 
-local WIRES = { "green", "red", "both" }
+-- No "both": the buy side and the sell side read different colours, because a
+-- signal's value is now a price limit and one read for both would be a buy cap
+-- and a sell floor at the same time.
+local WIRES = { "green", "red" }
 
 local function player_data(player)
     storage.players = storage.players or {}
@@ -23,6 +26,15 @@ local function frame_of(player)
     return player.gui.relative.otc_silo_frame
 end
 
+local function limit_tooltip(side, item_name)
+    if side == "buy" then
+        return "Highest price you will pay per unit. Blank means no limit.\nCurrently ₾"
+            .. trading_silo.buy_price(item_name) .. " to buy."
+    end
+    return "Lowest price you will accept per unit. Blank means no limit.\nCurrently ₾"
+        .. trading_silo.sell_price(item_name) .. " to sell."
+end
+
 local function add_order_row(parent, side, index, order, editable)
     local row = parent.add { type = "flow", direction = "horizontal" }
     row.style.vertical_align = "center"
@@ -37,7 +49,7 @@ local function add_order_row(parent, side, index, order, editable)
     }
 
     local label = row.add { type = "label", caption = prototypes.item[order.item].localised_name }
-    label.style.width = 110
+    label.style.width = 96
 
     if side == "buy" then
         if editable then
@@ -48,12 +60,40 @@ local function add_order_row(parent, side, index, order, editable)
                 allow_decimal = false,
                 allow_negative = false,
                 text = tostring(order.quantity),
+                tooltip = "How many to keep in stock. Slot filters and the limiter bar "
+                    .. "cap what will actually fit.",
             }
-            field.style.width = 60
+            field.style.width = 52
         else
-            local quantity = row.add { type = "label", caption = tostring(order.quantity) }
-            quantity.style.width = 60
+            -- Under circuit control the quantity is whatever the inventory will
+            -- still take, so filters and the bar are the quantity control.
+            local quantity = row.add {
+                type = "label",
+                caption = order.quantity and tostring(order.quantity) or "fill",
+                tooltip = order.quantity or "Buys until the slot filters and the limiter bar are full.",
+            }
+            quantity.style.width = 52
         end
+    end
+
+    if editable then
+        local field = row.add {
+            type = "textfield",
+            name = "otc_silo_lim_" .. side .. "_" .. index,
+            numeric = true,
+            allow_decimal = false,
+            allow_negative = false,
+            text = order.limit and tostring(order.limit) or "",
+            tooltip = limit_tooltip(side, order.item),
+        }
+        field.style.width = 58
+    else
+        local shown = row.add {
+            type = "label",
+            caption = order.limit and ("₾" .. order.limit) or "--",
+            tooltip = limit_tooltip(side, order.item),
+        }
+        shown.style.width = 58
     end
 
     local spacer = row.add { type = "empty-widget" }
@@ -115,11 +155,16 @@ local function rebuild_circuit(player)
 
     local flow = frame.otc_silo_content.otc_silo_circuit_flow
     flow.otc_silo_circuit.state = silo.circuit.enabled
-    for _, wire in ipairs(WIRES) do
-        local button = flow.otc_silo_wire_flow["otc_silo_wire_" .. wire]
-        button.state = silo.circuit.wire == wire
-        button.enabled = silo.circuit.enabled
+    for _, side in ipairs({ "buy", "sell" }) do
+        local wire_flow = flow["otc_silo_wire_flow_" .. side]
+        for _, wire in ipairs(WIRES) do
+            local button = wire_flow["otc_silo_wire_" .. side .. "_" .. wire]
+            button.state = silo.circuit[side .. "_wire"] == wire
+            button.enabled = silo.circuit.enabled
+        end
+        wire_flow.visible = silo.circuit.enabled
     end
+    flow.otc_silo_circuit_hint.visible = silo.circuit.enabled
 end
 
 --- Only circuit-driven lists change on their own; a configured one only changes
@@ -187,32 +232,59 @@ function M.open(player, entity)
         name = "otc_silo_circuit",
         caption = "Control with circuit network",
         state = false,
-        tooltip = "A positive signal is a quantity to maintain, a negative signal sells all of that item.",
+        tooltip = "Optional. Off, the lists below are the orders and you set the quantities.\n"
+            .. "On, each wire's signals are the orders: the signal value is the price limit,\n"
+            .. "and how much is bought is whatever the slot filters and the limiter bar allow.",
     }
-    local wire_flow = circuit_flow.add {
-        type = "flow", name = "otc_silo_wire_flow", direction = "horizontal",
-    }
-    for _, wire in ipairs(WIRES) do
-        local button = wire_flow.add {
-            type = "radiobutton",
-            name = "otc_silo_wire_" .. wire,
-            caption = wire:sub(1, 1):upper() .. wire:sub(2),
-            state = false,
+    for _, side in ipairs({ "buy", "sell" }) do
+        local wire_flow = circuit_flow.add {
+            type = "flow", name = "otc_silo_wire_flow_" .. side, direction = "horizontal",
         }
-        button.style.right_margin = 8
+        wire_flow.style.vertical_align = "center"
+        local caption = wire_flow.add {
+            type = "label",
+            caption = side == "buy" and "Buy wire" or "Sell wire",
+        }
+        caption.style.width = 64
+        for _, wire in ipairs(WIRES) do
+            local button = wire_flow.add {
+                type = "radiobutton",
+                name = "otc_silo_wire_" .. side .. "_" .. wire,
+                caption = wire:sub(1, 1):upper() .. wire:sub(2),
+                state = false,
+            }
+            button.style.right_margin = 8
+        end
     end
+    circuit_flow.add {
+        type = "label",
+        name = "otc_silo_circuit_hint",
+        caption = "Only items signalled on a wire are traded, and the signal value is the\n"
+            .. "price limit. The two sides cannot share a colour.",
+    }
 
     content.add { type = "line" }
 
     local panels = content.add { type = "flow", name = "otc_silo_panels", direction = "horizontal" }
     for _, side in ipairs({ "buy", "sell" }) do
         local panel = panels.add { type = "flow", name = side, direction = "vertical" }
-        panel.style.width = 290
+        panel.style.width = 320
         panel.add {
             type = "label",
             caption = side == "buy" and "Buy orders" or "Sell orders",
             style = "bold_label",
         }
+        local heads = panel.add { type = "flow", direction = "horizontal" }
+        heads.style.vertical_align = "center"
+        heads.add { type = "empty-widget" }.style.width = 36
+        heads.add { type = "label", caption = "Item" }.style.width = 96
+        if side == "buy" then
+            heads.add { type = "label", caption = "Keep" }.style.width = 52
+        end
+        heads.add {
+            type = "label",
+            caption = side == "buy" and "Max ₾" or "Min ₾",
+        }.style.width = 58
         local scroll = panel.add {
             type = "scroll-pane",
             name = "otc_silo_" .. side .. "_list",
@@ -304,11 +376,24 @@ end
 
 function M.on_text_changed(player, element)
     local index = element.name:match("^otc_silo_qty_(%d+)$")
-    if not index then return false end
-    local silo = silo_of(player)
-    if not silo or silo.circuit.enabled then return true end
-    trading_silo.set_quantity(silo, tonumber(index), tonumber(element.text) or 1)
-    return true
+    if index then
+        local silo = silo_of(player)
+        if not silo or silo.circuit.enabled then return true end
+        trading_silo.set_quantity(silo, tonumber(index), tonumber(element.text) or 1)
+        return true
+    end
+
+    local side, limit_index = element.name:match("^otc_silo_lim_(%a+)_(%d+)$")
+    if side then
+        local silo = silo_of(player)
+        if not silo or silo.circuit.enabled then return true end
+        -- A blank field is "no limit", so an empty string has to reach set_limit
+        -- rather than being defaulted to something.
+        trading_silo.set_limit(silo, side, tonumber(limit_index), tonumber(element.text))
+        return true
+    end
+
+    return false
 end
 
 function M.on_checked(player, element)
@@ -316,15 +401,15 @@ function M.on_checked(player, element)
     if not silo then return false end
 
     if element.name == "otc_silo_circuit" then
-        silo.circuit.enabled = element.state
+        trading_silo.set_circuit_enabled(silo, element.state)
         rebuild_circuit(player)
         rebuild_lists(player)
         return true
     end
 
-    local wire = element.name:match("^otc_silo_wire_(%a+)$")
-    if wire then
-        silo.circuit.wire = wire
+    local side, wire = element.name:match("^otc_silo_wire_(%a+)_(%a+)$")
+    if side then
+        trading_silo.set_wire(silo, side, wire)
         rebuild_circuit(player)
         rebuild_lists(player)
         return true

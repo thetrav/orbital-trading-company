@@ -1,4 +1,5 @@
 local stock = require("scripts.stock")
+local item_filter = require("scripts.item_filter")
 local district = require("scripts.district")
 local shape_registry = require("scripts.shape_registry")
 local siting = require("scripts.nauvis_siting")
@@ -64,7 +65,18 @@ M.OPTIONS = {
 -- Nauvis only builds out of genuine surplus. Below this it is competing with
 -- the players for its own warehouse, which would drain the market to fund a
 -- vote most of them did not cast.
+--
+-- Buildings are the exception, and have to be: `TARGET_STOCK` is the depth the
+-- *market* is priced around, and no one is ever going to sell Nauvis a thousand
+-- spare drills so it can spend thirty-two of them. Holding a reserve of machines
+-- it cannot make and nobody stocks would make every expansion unfundable, which
+-- is the whole reason a ballot elects one.
 local RESERVE = stock.TARGET_STOCK
+
+local function reserve_for(item_name)
+    if item_filter.is_building(item_name) then return 0 end
+    return RESERVE
+end
 
 local cost_cache = {}
 
@@ -174,7 +186,7 @@ local function accumulate(key)
         local held = progress[entry.name] or 0
         local need = entry.count - held
         if need > 0 then
-            local take = math.min(need, stock.get(entry.name) - RESERVE)
+            local take = math.min(need, stock.get(entry.name) - reserve_for(entry.name))
             if take > 0 then
                 take = stock.take(entry.name, take)
                 progress[entry.name] = held + take

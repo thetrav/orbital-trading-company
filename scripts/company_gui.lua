@@ -520,8 +520,9 @@ local function build_expansion_section(player, content)
         end
         bill.add {
             type = "label",
-            caption = "Nauvis only spends warehouse surplus above " .. utils.format_number(stock.TARGET_STOCK)
-                .. ", so sell it more than it wants to keep.",
+            caption = "Nauvis spends every building you sell it, and only the warehouse surplus "
+                .. "above " .. utils.format_number(stock.TARGET_STOCK) .. " of anything else. "
+                .. "It cannot build a single machine itself -- selling it these is the trade.",
         }
     end
 

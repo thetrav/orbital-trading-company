@@ -50,6 +50,9 @@ local function make_player(signals)
             if not signals or not signals[connector] then return nil end
             return { signals = signals[connector] }
         end,
+        get_or_create_control_behavior = function()
+            return { object_name = "LuaContainerControlBehavior", read_contents = true }
+        end,
     }
     local player = {
         index = 1,
@@ -173,14 +176,40 @@ describe("trading silo gui", function()
         assert.is_true(rows(player, "buy")[1].otc_silo_qty_1 ~= nil)
     end)
 
-    it("selects the wire the silo reads", function()
+    it("gives each side its own wire and never lets them share a colour", function()
         gui.open(player, entity)
-        local flow = orders(player).otc_silo_circuit_flow.otc_silo_wire_flow
-        gui.on_checked(player, flow.otc_silo_wire_both)
+        local circuit = orders(player).otc_silo_circuit_flow
+        local buy_flow = circuit.otc_silo_wire_flow_buy
+        local sell_flow = circuit.otc_silo_wire_flow_sell
 
-        assert.equals("both", trading_silo.get(1).circuit.wire)
-        assert.is_true(flow.otc_silo_wire_both.state)
-        assert.is_false(flow.otc_silo_wire_green.state)
+        gui.on_checked(player, buy_flow.otc_silo_wire_buy_red)
+        assert.equals("red", trading_silo.get(1).circuit.buy_wire)
+        assert.equals("green", trading_silo.get(1).circuit.sell_wire)
+        assert.is_true(buy_flow.otc_silo_wire_buy_red.state)
+        assert.is_false(buy_flow.otc_silo_wire_buy_green.state)
+        assert.is_true(sell_flow.otc_silo_wire_sell_green.state)
+
+        -- Claiming the colour the other side holds pushes that side off it.
+        gui.on_checked(player, sell_flow.otc_silo_wire_sell_red)
+        assert.equals("red", trading_silo.get(1).circuit.sell_wire)
+        assert.equals("green", trading_silo.get(1).circuit.buy_wire)
+    end)
+
+    it("edits a price limit and clears it when the field is emptied", function()
+        gui.open(player, entity)
+        local silo = trading_silo.get(1)
+        trading_silo.add_buy(silo, "iron-ore", 1)
+        gui.open(player, entity)
+
+        local field = rows(player, "buy")[1].otc_silo_lim_buy_1
+        assert.is_true(field ~= nil, "a buy row must carry a max-price field")
+        field.text = "150"
+        gui.on_text_changed(player, field)
+        assert.equals(150, silo.buy[1].limit)
+
+        field.text = ""
+        gui.on_text_changed(player, field)
+        assert.is_nil(silo.buy[1].limit)
     end)
 
     it("goes away when the silo's own window closes", function()
